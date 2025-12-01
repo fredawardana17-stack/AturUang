@@ -47,6 +47,10 @@
             margin-top: 10px;
             border: 1px solid #fde68a;
         }
+        /* Style untuk Tabel Rekap Bulanan */
+        #monthly-recap table th:last-child {
+            width: 1%; /* Agar tombol export tidak memakan banyak ruang */
+        }
     </style>
     
     <!-- SDK Firebase Kompatibilitas Layer -->
@@ -59,6 +63,9 @@
 
 <div class="container">
     <h1 class="text-3xl font-bold mb-6 text-center">💰 Catat Pengeluaran Harian</h1>
+
+    <!-- BAGIAN STATUS SISTEM -->
+    <div id="status-alert" class="hidden p-3 mb-4 rounded-lg text-sm font-medium" role="alert"></div>
 
     <!-- BAGIAN 1: INPUT NAMA PENGGUNA (Ganti Otentikasi) -->
     <div id="auth-section" class="auth-card">
@@ -99,9 +106,26 @@
         
         <hr class="my-6">
         
-        <!-- Ringkasan -->
-        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📊 Ringkasan Total</h2>
-        <p class="text-gray-700 text-lg">Total Pengeluaran: <span id="total-amount" class="font-bold text-red-600 ml-2">Rp 0</span></p>
+        <!-- Ringkasan & Export Global -->
+        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📊 Ringkasan & Ekspor</h2>
+        <p class="text-gray-700 text-lg mb-4">Total Pengeluaran: <span id="total-amount" class="font-bold text-red-600 ml-2">Rp 0</span></p>
+
+        <div class="flex flex-wrap gap-2 justify-start mb-4">
+            <!-- Tombol Export Raw Data Global -->
+            <button onclick="exportRawDataToCsv()" class="p-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition duration-150 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export Semua Data Mentah
+            </button>
+            <!-- Tombol Export Monthly Recap Global -->
+            <button onclick="exportMonthlyRecapToCsv()" class="p-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Export Semua Rekap Bulanan
+            </button>
+        </div>
 
         <hr class="my-6">
 
@@ -139,16 +163,18 @@
 let db = null;
 let auth = null;
 let currentUserId = null;
-let currentUserName = null; // Menyimpan nama pengguna
+let currentUserName = null; 
+let allExpenseData = []; 
+let chartInstance = null; 
+let isSimulationMode = false; // Status mode simulasi/lokal
 
-// Variabel baru untuk Chart dan Recap
-let chartInstance = null; // Untuk menyimpan instance Chart.js
-
+// Variabel DOM
 let userNameInput, startButton, authError, authSection, mainApp, userDisplayNameSpan;
 let expenseForm, amountInput, descriptionInput, categoryInput, expenseList, totalAmountSpan;
-let monthlyChartCanvas, monthlyRecapDiv;
+let monthlyChartCanvas, monthlyRecapDiv, statusAlertDiv;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const LOCAL_STORAGE_KEY = `expense_app_data_${appId}`;
 
 // Pastikan firebaseConfig adalah objek
 let firebaseConfig = {};
@@ -181,23 +207,33 @@ window.onload = function() {
     totalAmountSpan = document.getElementById('total-amount');
     monthlyChartCanvas = document.getElementById('monthlyChart');
     monthlyRecapDiv = document.getElementById('monthly-recap');
+    statusAlertDiv = document.getElementById('status-alert');
 
 
-    // 2. INISIALISASI FIREBASE (MODE PERMANEN)
-    if (!firebaseConfig.projectId) {
-        console.warn("[WARNING FIREBASE] Konfigurasi Firebase (Project ID) TIDAK ADA. Aplikasi MUNGKIN gagal terhubung ke database. Cek konfigurasi.");
+    // 2. INISIALISASI FIREBASE / TENTUKAN MODE SIMULASI
+    try {
+        if (!firebaseConfig.projectId) {
+            throw new Error("[FIREBASE ERROR] Konfigurasi Firebase (Project ID) TIDAK ADA.");
+        }
+        
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        
+        db = firebase.firestore();
+        auth = firebase.auth();
+        firebase.firestore.setLogLevel('debug');
+        console.log("[DEBUG FIREBASE] Firebase berhasil diinisialisasi. Mode: CLOUD");
+        isSimulationMode = false;
+        
+    } catch (e) {
+        console.error(`[FATAL ERROR] Gagal menginisialisasi Firebase. Beralih ke MODE SIMULASI LOKAL: ${e.message}`);
+        isSimulationMode = true;
+        // Tampilkan status peringatan di UI
+        statusAlertDiv.classList.remove('hidden');
+        statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
+        statusAlertDiv.innerHTML = '⚠️ **Mode Simulasi Lokal:** Koneksi database gagal. Data hanya akan tersimpan di browser ini (Local Storage) dan tidak akan dibagikan atau tersimpan permanen di cloud.';
     }
-
-    // Inisialisasi Firebase
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
-    
-    db = firebase.firestore();
-    auth = firebase.auth();
-    
-    firebase.firestore.setLogLevel('debug');
-    console.log("[DEBUG FIREBASE] Firebase berhasil diinisialisasi dan objek db/auth tersedia.");
     
     // 3. START LISTENERS DAN AUTHENTIKASI
     setupAuthListener();
@@ -205,33 +241,56 @@ window.onload = function() {
 
 
 // ------------------------------------
-// BAGIAN 2: FUNGSI OTENTIKASI BARU (ANONIM & NAMA PENGGUNA)
+// BAGIAN 2: FUNGSI OTENTIKASI & SETUP APLIKASI
 // ------------------------------------
 
 function signOut() {
-    if (auth) {
-        // Hapus nama pengguna saat logout
-        sessionStorage.removeItem('currentUserName');
+    // Jika tidak dalam mode simulasi, lakukan sign out Firebase
+    if (!isSimulationMode && auth) {
         auth.signOut();
-        console.log("[DEBUG AUTH] Pengguna mencoba Keluar.");
+    } else {
+        // Dalam mode simulasi, reset user ID dan tampilkan auth section
+        currentUserId = null;
+        currentUserName = null;
+        authSection.style.display = 'block';
+        mainApp.style.display = 'none';
     }
+    // Hapus data pengguna lokal
+    sessionStorage.removeItem('currentUserName');
+    allExpenseData = []; // Bersihkan data global
+    
+    // Bersihkan tampilan saat logout
+    if (expenseList && totalAmountSpan) {
+        expenseList.innerHTML = '';
+        totalAmountSpan.textContent = `Rp 0`;
+        if (chartInstance) chartInstance.destroy();
+        if (monthlyRecapDiv) monthlyRecapDiv.innerHTML = '<p class="text-gray-500">Memuat data rekap...</p>';
+    }
+    
+    console.log("[DEBUG AUTH] Pengguna mencoba Keluar.");
 }
-
-// Menghubungkan fungsi ke window agar dapat dipanggil dari onclick
 window.signOut = signOut;
 
-// Fungsi untuk menangani klik tombol "Mulai"
+
 function startAppAsUser() {
     const name = userNameInput.value.trim();
     if (name) {
         currentUserName = name;
         sessionStorage.setItem('currentUserName', name);
+        
         // Pindah ke tampilan utama
         authSection.style.display = 'none';
         mainApp.style.display = 'block';
         userDisplayNameSpan.textContent = currentUserName;
-        // Panggil kembali listener untuk memuat data (jika auth sudah selesai)
+
+        // Dalam mode simulasi, atur ID pengguna tiruan
+        if (isSimulationMode && !currentUserId) {
+            currentUserId = 'mock-local-user';
+        }
+        
+        // Muat data (baik dari Firebase atau Local Storage)
         if (currentUserId) {
+            setupExpenseFormListener();
             loadExpenses();
         }
     } else {
@@ -240,16 +299,16 @@ function startAppAsUser() {
 }
 window.startAppAsUser = startAppAsUser;
 
-// ------------------------------------
-// BAGIAN 3: LISTENER PERUBAHAN STATUS OTENTIKASI
-// ------------------------------------
-
-// Fungsi untuk menangani otentikasi awal (Selalu Anonim)
 async function initialAuth() {
+    if (isSimulationMode) {
+        console.log("[SIMULASI AUTH] Anonim sign-in diabaikan, menggunakan mock user.");
+        currentUserId = 'mock-local-user'; // Atur ID tiruan
+        return; 
+    }
+    
     if (!auth) return;
     
     try {
-        // Selalu coba sign in anonim jika belum ada user
         if (!auth.currentUser) {
             await auth.signInAnonymously();
             console.log("[DEBUG AUTH] Sign-in Anonim berhasil.");
@@ -260,71 +319,143 @@ async function initialAuth() {
     }
 }
 
-// Menyiapkan Listener Otentikasi
 function setupAuthListener() {
-    if (!auth) {
-        console.error("[AUTH ERROR] setupAuthListener dibatalkan: Objek 'auth' tidak ada.");
+    // Jika dalam mode simulasi, kita tidak perlu listener Firebase
+    if (isSimulationMode) {
+        initialAuth(); // Atur user ID tiruan segera
+        // Cek nama pengguna yang tersimpan di sesi
+        currentUserName = sessionStorage.getItem('currentUserName');
+        if (currentUserName) {
+            startAppAsUser(); // Lanjutkan ke aplikasi jika nama sudah ada
+        }
         return;
     }
-    
-    // Otentikasi awal (dilakukan segera di mode anonim)
+
+    // FIREBASE AUTH MODE
     initialAuth();
     
     auth.onAuthStateChanged((user) => {
         if (user) {
-            // Pengguna berhasil login/masuk (Anonim)
             currentUserId = user.uid;
-            console.log(`[DEBUG AUTH] Status: LOGIN. UID: ${currentUserId}, Email: ${user.email || 'Anonim'}`);
-            
-            // Cek nama pengguna
+            console.log(`[DEBUG AUTH] Status: LOGIN. UID: ${currentUserId}`);
             currentUserName = sessionStorage.getItem('currentUserName');
 
             if (currentUserName) {
-                // NAMA ADA: Tampilkan aplikasi utama
                 authSection.style.display = 'none';
                 mainApp.style.display = 'block';
                 userDisplayNameSpan.textContent = currentUserName; 
-                
-                // Setelah login, siapkan form submit dan muat data
                 setupExpenseFormListener();
                 loadExpenses();
-
             } else {
-                // NAMA BELUM ADA: Tampilkan bagian input nama
                 authSection.style.display = 'block';
                 mainApp.style.display = 'none';
             }
-            
             authError.textContent = '';
             
         } else {
-            // Pengguna logout
-            console.log("[DEBUG AUTH] Status: LOGOUT.");
+            // Pengguna logout (hanya terjadi jika signout dipanggil di non-simulasi)
             currentUserId = null;
             currentUserName = null;
-            
-            if (authSection && mainApp) {
-                authSection.style.display = 'block';
-                mainApp.style.display = 'none';
-                // Reset input nama pengguna
-                userNameInput.value = '';
-            }
-
-            // Bersihkan tampilan saat logout
-            if (expenseList && totalAmountSpan) {
-                expenseList.innerHTML = '';
-                totalAmountSpan.textContent = `Rp 0`;
-                // Bersihkan tampilan chart dan rekap
-                if (chartInstance) chartInstance.destroy();
-                if (monthlyRecapDiv) monthlyRecapDiv.innerHTML = '<p class="text-gray-500">Memuat data rekap...</p>';
-            }
+            allExpenseData = []; 
+            authSection.style.display = 'block';
+            mainApp.style.display = 'none';
+            userNameInput.value = '';
         }
     });
 }
 
 // ------------------------------------
-// BAGIAN 4: FUNGSI PENGELUARAN (CRUD)
+// BAGIAN 3: UTILITAS LOCAL STORAGE (SIMULASI FIREBASE)
 // ------------------------------------
+
+/**
+ * Mengambil semua data pengeluaran dari Local Storage
+ * @returns {Array} Array transaksi yang diurutkan berdasarkan timestamp descending
+ */
+function getLocalStorageExpenses() {
+    try {
+        const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (storedData) {
+            // Pastikan data yang dimuat sudah diurutkan (terbaru di atas)
+            return JSON.parse(storedData).sort((a, b) => {
+                const tsA = a.timestamp || 0;
+                const tsB = b.timestamp || 0;
+                return tsB - tsA; // Urutan descending
+            });
+        }
+    } catch (e) {
+        console.error("Gagal memuat data dari Local Storage:", e);
+    }
+    return [];
+}
+
+/**
+ * Menyimpan array transaksi ke Local Storage
+ * @param {Array} expenses 
+ */
+function saveExpensesToLocalStorage(expenses) {
+    try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(expenses));
+        // Setelah disimpan, panggil update UI
+        renderUI(expenses); 
+    } catch (e) {
+        console.error("Gagal menyimpan data ke Local Storage:", e);
+    }
+}
+
+
+// ------------------------------------
+// BAGIAN 4: FUNGSI PENGELUARAN (CRUD & RENDER)
+// ------------------------------------
+
+// Helper untuk Render UI secara keseluruhan
+function renderUI(data) {
+    allExpenseData = data; // Perbarui data global
+    renderExpenseList(data);
+    renderChartsAndSummary(data);
+}
+
+// Helper untuk Render Daftar Transaksi
+function renderExpenseList(data) {
+    expenseList.innerHTML = '';
+    let total = 0;
+    
+    if (data.length === 0) {
+        expenseList.innerHTML = '<p class="text-gray-500 text-center py-4">Belum ada transaksi yang dicatat.</p>';
+    }
+    
+    data.forEach(item => {
+        const itemAmount = typeof item.amount === 'number' ? item.amount : 0;
+        total += itemAmount;
+        const docId = item.id; 
+        
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'expense-item';
+        
+        itemDiv.innerHTML = `
+            <div style="flex-grow: 1;">
+                <strong class="text-gray-900">${item.description}</strong> 
+                <span class="text-sm text-gray-500">(${item.category}) - ${item.date}</span>
+            </div>
+            <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
+            <div class="flex space-x-2">
+                <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${item.category}', '${item.description}')" 
+                        class="p-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition duration-150">
+                    Edit
+                </button>
+                <button onclick="window.handleDeleteClick('${docId}')" 
+                        class="p-2 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition duration-150">
+                    Hapus
+                </button>
+            </div>
+        `;
+        
+        expenseList.appendChild(itemDiv);
+    });
+    
+    totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
+}
+
 
 // Fungsi 4A: CREATE (Menambahkan Pengeluaran)
 function setupExpenseFormListener() {
@@ -337,112 +468,85 @@ function setupExpenseFormListener() {
 async function handleExpenseSubmit(e) {
     e.preventDefault();
 
-    if (!currentUserId || !db || !currentUserName) {
+    if (!currentUserId || !currentUserName) {
         authError.textContent = 'Layanan tidak tersedia. Silakan masuk (login) terlebih dahulu dan isi Nama Pengguna.';
-        return console.error("[DEBUG DATA] Gagal menambah. Tidak ada user, DB, atau Nama Pengguna tidak terinisialisasi.");
+        return console.error("[DEBUG DATA] Gagal menambah. Tidak ada user atau Nama Pengguna.");
     }
 
     const amount = parseInt(amountInput.value);
     const category = categoryInput.value;
     const description = descriptionInput.value;
-    // Menggunakan format YYYY-MM-DD untuk kemudahan sorting/grouping
     const date = new Date().toISOString().split('T')[0];
-    
-    // Path Koleksi Private Firestore
-    const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-    const userExpensesCollection = db.collection(collectionPath);
-    console.log(`[DEBUG DATA] Mencoba menambah data ke path: ${collectionPath}`);
+    const timestamp = Date.now(); // Gunakan timestamp JS untuk local mode
 
+    const newExpense = {
+        amount: amount,
+        category: category,
+        description: description,
+        date: date,
+        timestamp: timestamp, 
+        userId: currentUserId,
+        userName: currentUserName 
+    };
 
     if (amount > 0 && category && description) {
-        try {
-            await userExpensesCollection.add({
-                amount: amount,
-                category: category,
-                description: description,
-                date: date,
-                // Menggunakan timestamp Firestore yang asli
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(), 
-                userId: currentUserId,
-                userName: currentUserName 
-            });
-            console.log("[DEBUG DATA] Transaksi berhasil ditambahkan!");
-            expenseForm.reset(); 
-        } catch (error) {
-            console.error("[DEBUG DATA] Error saat menambahkan dokumen: ", error);
-            authError.textContent = 'Gagal menambah transaksi. Kemungkinan masalah Izin (Security Rules). Cek konsol.';
+        if (!isSimulationMode && db) {
+            // MODE FIREBASE
+            const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+            try {
+                // Biarkan Firestore menetapkan ID dan timestamp server
+                await db.collection(collectionPath).add(newExpense); 
+                console.log("[DEBUG DATA] Transaksi berhasil ditambahkan ke Firestore!");
+            } catch (error) {
+                console.error("[DEBUG DATA] Error saat menambahkan dokumen: ", error);
+                authError.textContent = 'Gagal menambah transaksi ke Cloud. Cek konsol.';
+            }
+        } else {
+            // MODE SIMULASI LOKAL
+            newExpense.id = crypto.randomUUID(); // Buat ID unik untuk Local Storage
+            const currentExpenses = getLocalStorageExpenses();
+            currentExpenses.unshift(newExpense); // Tambahkan di awal agar otomatis terurut descending (karena sudah diurutkan saat get)
+            saveExpensesToLocalStorage(currentExpenses);
+            console.log("[DEBUG DATA] Transaksi berhasil ditambahkan ke Local Storage!");
         }
+
+        expenseForm.reset(); 
     } else {
         console.log("[DEBUG DATA] Peringatan: Pastikan semua kolom terisi dengan benar.");
     }
 }
 
+
 // Fungsi 4B: READ (Memuat dan Menampilkan Pengeluaran)
 function loadExpenses() {
-    if (!currentUserId || !expenseList || !totalAmountSpan || !db || !currentUserName) {
+    if (!currentUserId || !currentUserName) {
         return console.log("[DEBUG DATA] loadExpenses dihentikan. Pre-requisite tidak terpenuhi.");
     }
     
-    const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-    const userExpensesCollection = db.collection(collectionPath);
-    console.log(`[DEBUG DATA] Menyiapkan listener data dari path: ${collectionPath}`);
-
-    // Menggunakan onSnapshot untuk pembaruan real-time
-    userExpensesCollection
-        .orderBy('timestamp', 'desc')
-        .onSnapshot(snapshot => {
-            console.log(`[DEBUG DATA] Snapshot diterima. Jumlah dokumen: ${snapshot.size}`);
-            expenseList.innerHTML = '';
-            let total = 0;
-            let rawData = []; // Array untuk menyimpan data mentah
-
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                const itemAmount = typeof data.amount === 'number' ? data.amount : 0;
-                total += itemAmount;
-                rawData.push({ ...data, id: doc.id }); // Simpan data mentah
-
-                const docId = doc.id; 
-                
-                const item = document.createElement('div');
-                item.className = 'expense-item';
-                
-                // Struktur HTML item pengeluaran
-                item.innerHTML = `
-                    <div style="flex-grow: 1;">
-                        <strong class="text-gray-900">${data.description}</strong> 
-                        <span class="text-sm text-gray-500">(${data.category}) - ${data.date}</span>
-                    </div>
-                    <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
-                    <div class="flex space-x-2">
-                        <!-- Tombol Edit -->
-                        <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${data.category}', '${data.description}')" 
-                                class="p-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition duration-150">
-                            Edit
-                        </button>
-                        
-                        <!-- Tombol Hapus -->
-                        <button onclick="window.handleDeleteClick('${docId}')" 
-                                class="p-2 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition duration-150">
-                            Hapus
-                        </button>
-                    </div>
-                `;
-                
-                expenseList.appendChild(item);
+    if (!isSimulationMode && db) {
+        // MODE FIREBASE
+        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        db.collection(collectionPath)
+            .orderBy('timestamp', 'desc')
+            .onSnapshot(snapshot => {
+                console.log(`[DEBUG DATA] Snapshot diterima. Jumlah dokumen: ${snapshot.size}`);
+                const data = [];
+                snapshot.forEach(doc => {
+                    data.push({ ...doc.data(), id: doc.id });
+                });
+                renderUI(data); // Panggil helper untuk render
+            }, error => {
+                console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
+                authError.textContent = 'Gagal memuat data Cloud. Cek konsol.';
             });
-            
-            totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
-
-            // Panggil fungsi baru untuk memproses dan menampilkan chart/rekap
-            renderChartsAndSummary(rawData);
-            
-        }, error => {
-            console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
-            authError.textContent = 'Gagal memuat data. Kemungkinan masalah Izin (Security Rules). Cek konsol.';
-        });
-
+    } else {
+        // MODE SIMULASI LOKAL
+        console.log("[DEBUG DATA] Memuat data dari Local Storage.");
+        const data = getLocalStorageExpenses();
+        renderUI(data); // Panggil helper untuk render
+    }
 }
+
 
 // ------------------------------------
 // BAGIAN 5: VISUALISASI DAN REKAP BULANAN
@@ -453,9 +557,11 @@ function renderChartsAndSummary(data) {
 
     // 1. Agregasi Data per Bulan
     const monthlySummary = data.reduce((acc, expense) => {
-        // Tanggal tersimpan sebagai 'YYYY-MM-DD'
-        const yearMonth = expense.date ? expense.date.substring(0, 7) : 'Unknown'; 
-        acc[yearMonth] = (acc[yearMonth] || 0) + expense.amount;
+        const expenseDate = expense.date;
+        if (typeof expenseDate === 'string' && expenseDate.length >= 7) {
+            const yearMonth = expenseDate.substring(0, 7); 
+            acc[yearMonth] = (acc[yearMonth] || 0) + expense.amount;
+        }
         return acc;
     }, {});
     
@@ -473,44 +579,50 @@ function renderChartsAndSummary(data) {
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-semibold text-blue-800 uppercase tracking-wider">Bulan</th>
                         <th class="px-6 py-3 text-right text-xs font-semibold text-blue-800 uppercase tracking-wider">Total Pengeluaran</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-blue-800 uppercase tracking-wider">Export</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
     `;
 
     if (sortedMonths.length === 0) {
-        recapHTML += `
-            <tr>
-                <td colspan="2" class="px-6 py-4 text-center text-sm text-gray-500">Belum ada data pengeluaran.</td>
-            </tr>
-        `;
+        recapHTML = '<p class="text-gray-500 text-center py-4">Belum ada data untuk membuat rekap bulanan.</p>';
+        monthlyRecapDiv.innerHTML = recapHTML;
+    } else {
+        sortedMonths.forEach(ym => {
+            const amount = monthlySummary[ym];
+            // Format bulan: cth. "Desember 2025"
+            const displayMonth = new Date(ym + '-01').toLocaleString('id-ID', { year: 'numeric', month: 'long' });
+            
+            // Data untuk Chart (urutannya perlu dibalik untuk chart yang logis/dari waktu ke waktu)
+            chartLabels.unshift(displayMonth);
+            chartData.unshift(amount);
+            
+            // Data untuk Tabel Recap
+            recapHTML += `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${displayMonth}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-bold">Rp ${amount.toLocaleString('id-ID')}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right">
+                        <button onclick="exportSpecificMonthToCsv('${ym}', '${displayMonth}')" 
+                                class="p-1.5 bg-green-500 hover:bg-green-600 text-white text-xs rounded transition duration-150 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        recapHTML += `</tbody></table></div>`;
+        monthlyRecapDiv.innerHTML = recapHTML;
     }
-    
-    sortedMonths.forEach(ym => {
-        const amount = monthlySummary[ym];
-        // Format bulan: cth. "Desember 2025"
-        const displayMonth = new Date(ym + '-01').toLocaleString('id-ID', { year: 'numeric', month: 'long' });
-        
-        // Data untuk Chart (urutannya perlu dibalik untuk chart yang logis/dari waktu ke waktu)
-        chartLabels.unshift(displayMonth);
-        chartData.unshift(amount);
-        
-        // Data untuk Tabel Recap
-        recapHTML += `
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${displayMonth}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-bold">Rp ${amount.toLocaleString('id-ID')}</td>
-            </tr>
-        `;
-    });
-    
-    recapHTML += `</tbody></table></div>`;
-    monthlyRecapDiv.innerHTML = recapHTML;
 
 
     // 2. Render Chart
     if (chartInstance) {
-        chartInstance.destroy(); // Hancurkan instance lama sebelum membuat yang baru
+        chartInstance.destroy(); // Hancurkan instance lama
     }
     
     if (sortedMonths.length > 0) {
@@ -529,7 +641,7 @@ function renderChartsAndSummary(data) {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false, // Memungkinkan canvas untuk di-resize lebih baik
+                maintainAspectRatio: false, 
                 scales: {
                     y: {
                         beginAtZero: true,
@@ -556,7 +668,159 @@ function renderChartsAndSummary(data) {
         monthlyChartCanvas.style.display = 'none';
     }
 }
-window.renderChartsAndSummary = renderChartsAndSummary; // Jadikan global
+window.renderChartsAndSummary = renderChartsAndSummary;
+
+
+// ------------------------------------
+// BAGIAN 6: FUNGSI EXPORT CSV 
+// ------------------------------------
+
+// Fungsi utilitas untuk membuat baris CSV dari array kolom
+const processRowToCsv = (row) => row.map(cell => {
+    if (typeof cell === 'string') {
+        // Escape tanda kutip ganda dan bungkus dengan tanda kutip ganda
+        return `"${cell.replace(/"/g, '""')}"`;
+    }
+    return cell;
+}).join(',');
+
+// Fungsi utilitas untuk mengunduh konten CSV
+function downloadCsv(csvContent, filename) {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+
+/**
+ * 6A. Export Data Mentah Global (semua transaksi)
+ */
+function exportRawDataToCsv() {
+    if (allExpenseData.length === 0) {
+        console.log("Tidak ada data pengeluaran yang tercatat untuk diekspor.");
+        return;
+    }
+    
+    const headers = ["ID Transaksi", "Jumlah", "Deskripsi", "Kategori", "Tanggal", "Nama Pengguna"];
+    
+    const rows = allExpenseData.map(item => [
+        item.id || '',
+        item.amount || 0,
+        item.description || '',
+        item.category || '',
+        item.date || '',
+        item.userName || ''
+    ]);
+
+    const csvContent = [
+        processRowToCsv(headers),
+        ...rows.map(processRowToCsv)
+    ].join('\n');
+    
+    const currentDate = new Date().toISOString().split('T')[0];
+    downloadCsv(csvContent, `pengeluaran_mentah_semua_${currentDate}.csv`);
+    
+    console.log(`[EXPORT] Berhasil mengunduh Semua Data Mentah (${allExpenseData.length} baris) ke CSV.`);
+}
+window.exportRawDataToCsv = exportRawDataToCsv;
+
+
+/**
+ * 6B. Export Rekap Bulanan Global (ringkasan total)
+ */
+function exportMonthlyRecapToCsv() {
+    if (allExpenseData.length === 0) {
+        console.log("Tidak ada data pengeluaran yang tercatat untuk membuat rekap.");
+        return;
+    }
+    
+    // Hitung Agregasi Data per Bulan
+    const monthlySummary = allExpenseData.reduce((acc, expense) => {
+        const expenseDate = expense.date;
+        if (typeof expenseDate === 'string' && expenseDate.length >= 7) {
+            const yearMonth = expenseDate.substring(0, 7); 
+            acc[yearMonth] = (acc[yearMonth] || 0) + expense.amount;
+        }
+        return acc;
+    }, {});
+
+    const sortedMonths = Object.keys(monthlySummary).sort().reverse();
+    
+    const headers = ["Bulan", "Total Pengeluaran (Rp)"];
+    
+    const rows = sortedMonths.map(ym => {
+        const amount = monthlySummary[ym];
+        const displayMonth = new Date(ym + '-01').toLocaleString('id-ID', { year: 'numeric', month: 'long' });
+        
+        return [
+            displayMonth, 
+            amount 
+        ];
+    });
+
+    const csvContent = [
+        processRowToCsv(headers),
+        ...rows.map(processRowToCsv)
+    ].join('\n');
+    
+    const currentDate = new Date().toISOString().split('T')[0];
+    downloadCsv(csvContent, `rekap_bulanan_semua_${currentDate}.csv`);
+    
+    console.log(`[EXPORT] Berhasil mengunduh Rekap Bulanan (${sortedMonths.length} bulan) ke CSV.`);
+}
+window.exportMonthlyRecapToCsv = exportMonthlyRecapToCsv;
+
+
+/**
+ * 6C. Export Data Mentah Spesifik Per Bulan
+ * @param {string} yearMonth - Format 'YYYY-MM' (e.g., '2025-11')
+ * @param {string} displayMonth - Nama bulan yang diformat (e.g., 'November 2025')
+ */
+function exportSpecificMonthToCsv(yearMonth, displayMonth) {
+    
+    // 1. Filter data hanya untuk bulan yang diminta
+    const filteredData = allExpenseData.filter(item => 
+        item.date && item.date.startsWith(yearMonth)
+    );
+
+    if (filteredData.length === 0) {
+        console.log(`Tidak ada data transaksi yang tercatat untuk bulan ${displayMonth}.`);
+        return;
+    }
+
+    // 2. Tentukan Header CSV (sama dengan data mentah)
+    const headers = ["ID Transaksi", "Jumlah", "Deskripsi", "Kategori", "Tanggal", "Nama Pengguna"];
+    
+    // 3. Format Baris Data yang sudah difilter
+    const rows = filteredData.map(item => [
+        item.id || '',
+        item.amount || 0,
+        item.description || '',
+        item.category || '',
+        item.date || '',
+        item.userName || ''
+    ]);
+
+    // 4. Gabungkan dan Download
+    const csvContent = [
+        processRowToCsv(headers),
+        ...rows.map(processRowToCsv)
+    ].join('\n');
+    
+    const filename = `pengeluaran_${yearMonth}.csv`;
+    downloadCsv(csvContent, filename);
+    
+    console.log(`[EXPORT] Berhasil mengunduh Data Mentah untuk ${displayMonth} (${filteredData.length} baris) ke CSV.`);
+}
+window.exportSpecificMonthToCsv = exportSpecificMonthToCsv;
+
 
 // ------------------------------------
 // FUNGSI PENGGANTI PROMPT/CONFIRM (Untuk Lingkungan Canvas)
@@ -564,7 +828,6 @@ window.renderChartsAndSummary = renderChartsAndSummary; // Jadikan global
 
 // Fungsi 4C: UPDATE (Mengedit Pengeluaran) - Diubah untuk konsol
 function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
-    if (!db) return console.error("[AUTH ERROR] DB tidak terinisialisasi.");
     console.log("--- EDIT TRANSAKSI ---");
     console.log(`ID Dokumen: ${docId}`);
     console.log(`Data Lama: Jumlah: ${oldAmount}, Kategori: ${oldCategory}, Deskripsi: ${oldDescription}`);
@@ -574,32 +837,44 @@ function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
     // Fungsi bantuan manual untuk debugging/pengujian
     window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
         if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
-        if (!db) return console.error("Layanan database (db) tidak tersedia.");
         
-        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-        const expenseDocRef = db.collection(collectionPath).doc(id);
+        const updatePayload = {
+            amount: parseInt(newAmount), 
+            description: newDescription,
+            category: newCategory
+        };
 
-        if (newAmount && newCategory && newDescription) {
-            try {
-                await expenseDocRef.update({
-                    amount: parseInt(newAmount), 
-                    description: newDescription,
-                    category: newCategory
-                });
-                console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil diupdate.`);
-            } catch (error) {
-                console.error("[Gagal MANUAL] Error saat mengupdate dokumen: ", error);
+        if (isSimulationMode) {
+            // LOKAL
+            const currentExpenses = getLocalStorageExpenses();
+            const index = currentExpenses.findIndex(e => e.id === id);
+            if (index !== -1) {
+                currentExpenses[index] = {
+                    ...currentExpenses[index],
+                    ...updatePayload,
+                    timestamp: Date.now() // Perbarui timestamp
+                };
+                saveExpensesToLocalStorage(currentExpenses);
+                console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil diupdate di Local Storage.`);
+            } else {
+                console.error(`[Gagal MANUAL] Transaksi dengan ID ${id} tidak ditemukan.`);
             }
-        } else {
-            console.error("[Gagal MANUAL] Semua kolom (jumlah, kategori, deskripsi) harus diisi!");
+        } else if (db) {
+            // FIREBASE
+            const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+            const expenseDocRef = db.collection(collectionPath).doc(id);
+            try {
+                await expenseDocRef.update(updatePayload);
+                console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil diupdate di Firestore.`);
+            } catch (error) {
+                console.error("[Gagal MANUAL] Error saat mengupdate dokumen di Firestore: ", error);
+            }
         }
     };
-
 }
 
 // Fungsi 4D: DELETE (Menghapus Pengeluaran) - Diubah untuk konsol
 function handleDeleteClick(docId) {
-    if (!db) return console.error("[AUTH ERROR] DB tidak terinisialisasi.");
     console.log("--- HAPUS TRANSAKSI ---");
     console.log(`ID Dokumen: ${docId}`);
     console.log("Untuk menghapus, silakan panggil fungsi 'manualDelete' di konsol:");
@@ -608,16 +883,28 @@ function handleDeleteClick(docId) {
     // Fungsi bantuan manual untuk debugging/pengujian
     window.manualDelete = async (id) => {
         if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
-        if (!db) return console.error("Layanan database (db) tidak tersedia.");
         
-        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-        const expenseDocRef = db.collection(collectionPath).doc(id);
-
-        try {
-            await expenseDocRef.delete();
-            console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil dihapus.`);
-        } catch (error) {
-            console.error("[Gagal MANUAL] Error saat menghapus dokumen: ", error);
+        if (isSimulationMode) {
+            // LOKAL
+            let currentExpenses = getLocalStorageExpenses();
+            const initialLength = currentExpenses.length;
+            currentExpenses = currentExpenses.filter(e => e.id !== id);
+            if (currentExpenses.length < initialLength) {
+                saveExpensesToLocalStorage(currentExpenses);
+                console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil dihapus dari Local Storage.`);
+            } else {
+                console.error(`[Gagal MANUAL] Transaksi dengan ID ${id} tidak ditemukan.`);
+            }
+        } else if (db) {
+            // FIREBASE
+            const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+            const expenseDocRef = db.collection(collectionPath).doc(id);
+            try {
+                await expenseDocRef.delete();
+                console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil dihapus dari Firestore.`);
+            } catch (error) {
+                console.error("[Gagal MANUAL] Error saat menghapus dokumen di Firestore: ", error);
+            }
         }
     };
 }
