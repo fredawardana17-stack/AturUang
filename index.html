@@ -103,7 +103,7 @@
         <form id="expense-form" class="space-y-3">
             <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required class="w-full p-3 border border-gray-300 rounded-lg">
             <input type="text" id="description" placeholder="Deskripsi (contoh: Kopi dan Roti)" required class="w-full p-3 border border-gray-300 rounded-lg">
-            <select id="category" required class="w-full p-3 border border-gray-300 rounded-lg bg-white">
+            <select type="text" id="category" required class="w-full p-3 border border-gray-300 rounded-lg bg-white">
                 <option value="" disabled selected>Pilih Kategori</option>
                 <option value="Makanan">Makanan</option>
                 <option value="Transportasi">Transportasi</option>
@@ -218,20 +218,39 @@ window.onload = async function() {
         // Coba parsing konfigurasi yang disuntikkan secara global
         const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
         
+        // --- START MANUAL CONFIGURATION INJECTION POINT (SOLUSI) ---
+        // Jika Anda memiliki konfigurasi Firebase sendiri (dari console Google/Firebase)
+        // dan variabel lingkungan __firebase_config gagal dimuat, 
+        // Anda dapat menyalin objek konfigurasi Anda di sini. 
+        // HANYA UNCOMMENT JIKA CONFIG UTAMA GAGAL.
+        const MANUAL_FIREBASE_CONFIG = {
+            // apiKey: "AIzaSy...", 
+            // authDomain: "your-project-id.firebaseapp.com",
+            // projectId: "your-project-id", // <-- Ganti dengan project ID Anda
+            // storageBucket: "your-project-id.appspot.com",
+            // messagingSenderId: "...",
+            // appId: "1:..."
+        };
+        // --- END MANUAL CONFIGURATION INJECTION POINT ---
+        
+        let parsedConfig = {};
         if (configString.trim() !== '' && configString.trim() !== '{}') {
             try {
-                firebaseConfig = JSON.parse(configString);
+                parsedConfig = JSON.parse(configString);
             } catch (jsonError) {
-                console.error("[FATAL ERROR - CONFIG] Gagal Parsing JSON Konfigurasi:", configString, jsonError);
+                console.error("[FATAL ERROR - CONFIG] Gagal Parsing JSON Konfigurasi Variabel Lingkungan:", configString, jsonError);
                 throw new Error(`Gagal mem-parsing string konfigurasi Firebase (bukan JSON valid).`);
             }
         }
         
+        // Pilih konfigurasi: utamakan variabel global, fallback ke manual, jika keduanya kosong, throw error.
+        firebaseConfig = parsedConfig.projectId ? parsedConfig : (MANUAL_FIREBASE_CONFIG.projectId ? MANUAL_FIREBASE_CONFIG : {});
+
         // VALIDASI KRITIS: Cek Project ID
         if (!firebaseConfig || !firebaseConfig.projectId) {
-            console.error("[FATAL ERROR - CONFIG] Konfigurasi yang diparsing (error expected):", firebaseConfig);
-            // This is the source of the persistent error, thrown only if projectId is missing.
-            throw new Error(`"projectId" not provided in firebase.initializeApp. Ini menunjukkan kegagalan dalam pengambilan konfigurasi global '__firebase_config' atau nilainya kosong.`);
+            console.error("[FATAL ERROR - CONFIG] Konfigurasi yang diparsing (ERROR):", parsedConfig);
+            // Ini adalah pesan error yang diperjelas
+            throw new Error(`"projectId" not provided. Variabel lingkungan '__firebase_config' kosong atau tidak valid. Jika Anda memiliki Firebase Config sendiri, masukkan secara manual di bagian 'MANUAL_FIREBASE_CONFIG' pada kode.`);
         }
         
         console.log("[DEBUG CONFIG] Konfigurasi Firebase berhasil dimuat untuk Project ID:", firebaseConfig.projectId);
@@ -494,7 +513,7 @@ async function handleExpenseSubmit(e) {
     };
 
     if (amount > 0 && category && description) {
-        // Path collection: /artifacts/{appId}/users/{userId}/expenses
+        // Path collection: /artifacts/{appId}/users/{currentUserId}/expenses
         const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
         try {
             await window.firebaseModular.addDoc(collectionRef, newExpense); 
@@ -517,7 +536,7 @@ function loadExpenses() {
         return console.log("[DEBUG DATA] loadExpenses dihentikan. Prasyarat tidak terpenuhi.");
     }
     
-    // Path collection: /artifacts/{appId}/users/{userId}/expenses
+    // Path collection: /artifacts/{appId}/users/{currentUserId}/expenses
     const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
     const q = window.firebaseModular.query(collectionRef, window.firebaseModular.orderBy('timestamp', 'desc'));
     
@@ -846,7 +865,7 @@ function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
     window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
         if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
-        // Path document: /artifacts/{appId}/users/{userId}/expenses/{docId}
+        // Path document: /artifacts/{appId}/users/{currentUserId}/expenses/{docId}
         const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
         
         const updatePayload = {
@@ -879,7 +898,7 @@ function handleDeleteClick(docId) {
     window.manualDelete = async (id) => {
         if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
-        // Path document: /artifacts/{appId}/users/{userId}/expenses/{docId}
+        // Path document: /artifacts/{appId}/users/{currentUserId}/expenses/{docId}
         const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
         
         try {
