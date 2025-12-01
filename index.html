@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Pengeluaran Mudah</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #expense-form input, #expense-form select, #expense-form button { margin-bottom: 10px; padding: 8px; width: 100%; box-sizing: border-box;}
+        .expense-item { border-bottom: 1px solid #eee; padding: 10px 0; display: flex; justify-content: space-between; }
+        .amount { font-weight: bold; }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+    <h1>💰 Catat Pengeluaran</h1>
+
+    <form id="expense-form">
+        <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required>
+        <select id="category" required>
+            <option value="" disabled selected>Pilih Kategori</option>
+            <option value="Makanan">Makanan</option>
+            <option value="Transportasi">Transportasi</option>
+            <option value="Belanja">Belanja</option>
+            <option value="Hiburan">Hiburan</option>
+            <option value="Lainnya">Lainnya</option>
+        </select>
+        <button type="submit">Tambah Pengeluaran</button>
+    </form>
+    
+    <hr>
+    
+    <h2>📊 Ringkasan Hari Ini</h2>
+    <p>Total Pengeluaran: <span id="total-amount">Rp 0</span></p>
+
+    <hr>
+    
+    <h2>📜 Riwayat Transaksi</h2>
+    <div id="expense-list">
+        </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
