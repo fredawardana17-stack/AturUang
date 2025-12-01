@@ -21,7 +21,7 @@
             display: flex; 
             justify-content: space-between; 
             align-items: center;
-            flex-wrap: wrap; /* Added for mobile responsiveness */
+            flex-wrap: wrap; 
         }
         .expense-item > div {
             padding: 4px 0;
@@ -54,11 +54,19 @@
         }
     </style>
     
-    <!-- Firebase SDK Compatibility Layer Imports (Using v9+ Modular style for robustness) -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script> 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script> 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
-
+    <!-- FIX UTAMA: Mengganti library compat v9 dengan Modular SDK v11 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Memasang fungsi-fungsi penting ke window agar dapat diakses oleh kode non-module (seperti event onclick)
+        window.firebaseModular = {
+            initializeApp,
+            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, orderBy, serverTimestamp, setLogLevel
+        };
+    </script> 
 </head>
 <body class="bg-gray-50 p-4">
 
@@ -68,7 +76,7 @@
     <!-- SYSTEM STATUS SECTION -->
     <div id="status-alert" class="hidden p-3 mb-4 rounded-lg text-sm font-medium" role="alert"></div>
 
-    <!-- SECTION 1: USER START (Replaced complex auth with simple name-based access) -->
+    <!-- SECTION 1: USER START -->
     <div id="auth-section" class="auth-card">
         <h2 class="text-xl font-semibold mb-4 text-blue-700">Mulai Catat Pengeluaran</h2>
         <p class="text-sm text-gray-600 mb-4">Aplikasi ini menggunakan otentikasi anonim untuk menyimpan data secara aman di cloud Anda.</p>
@@ -161,13 +169,12 @@
 // ------------------------------------
 // SECTION 1: CONFIGURATION, INITIALIZATION, AND GLOBAL SCOPE
 // ------------------------------------
-let db = null;
-let auth = null;
+let app, db, auth;
 let currentUserId = null;
 let currentUserName = null; 
 let allExpenseData = []; 
 let chartInstance = null; 
-let isFirebaseInitialized = false; // Flag to ensure Firebase setup status
+let isFirebaseInitialized = false; 
 
 // DOM Variables
 let userNameInput, startButton, authError, authSection, mainApp, userDisplayNameSpan;
@@ -176,7 +183,7 @@ let monthlyChartCanvas, monthlyRecapDiv, statusAlertDiv;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// Ensure firebaseConfig is an object
+// Ambil konfigurasi dari variabel global
 let firebaseConfig = {};
 try {
     const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
@@ -184,14 +191,14 @@ try {
         firebaseConfig = JSON.parse(configString);
     }
 } catch (e) {
-    console.error("[FATAL ERROR] Failed to parse __firebase_config. Config set to empty.", e);
+    console.error("[FATAL ERROR] Gagal mem-parsing __firebase_config. Konfigurasi diatur menjadi kosong.", e);
 }
 
 
 // ------------------------------------
 // THE ENTIRE APPLICATION LOGIC RUNS AFTER THE DOM IS READY
 // ------------------------------------
-window.onload = function() {
+window.onload = async function() {
     // 1. DOM Elements
     userNameInput = document.getElementById('user-name-input');
     startButton = document.getElementById('start-button');
@@ -210,34 +217,57 @@ window.onload = function() {
     statusAlertDiv = document.getElementById('status-alert');
 
 
-    // 2. FIREBASE INITIALIZATION
+    // 2. FIREBASE INITIALIZATION (Menggunakan pola modular)
     try {
-        if (!firebaseConfig.projectId) {
-            throw new Error("[FIREBASE ERROR] Firebase configuration (Project ID) is MISSING.");
+        if (!firebaseConfig.projectId || !window.firebaseModular) {
+            throw new Error("[FIREBASE ERROR] Konfigurasi Firebase (Project ID) HILANG atau impor modular gagal.");
         }
         
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        
-        db = firebase.firestore();
-        auth = firebase.auth();
-        firebase.firestore.setLogLevel('debug');
+        // Inisialisasi Aplikasi Firebase
+        app = window.firebaseModular.initializeApp(firebaseConfig);
+        db = window.firebaseModular.getFirestore(app);
+        auth = window.firebaseModular.getAuth(app);
+        window.firebaseModular.setLogLevel('debug');
         isFirebaseInitialized = true;
-        console.log("[DEBUG FIREBASE] Firebase successfully initialized. Mode: CLOUD FIRESTORE");
+
+        // Inisialisasi Otentikasi
+        await initializeAuth();
         
     } catch (e) {
-        // This should not happen if config is correct, but handles initialization failure
-        console.error(`[FATAL ERROR] Failed to initialize Firebase. Please check your configuration: ${e.message}`);
+        console.error(`[FATAL ERROR] Gagal menginisialisasi Firebase: ${e.message}`, e);
         statusAlertDiv.classList.remove('hidden');
         statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
         statusAlertDiv.innerHTML = '❌ **Kesalahan Fatal:** Gagal menyambung ke database. Cek konsol (F12) untuk detail error konfigurasi.';
-        return; // Stop execution if Firebase failed to initialize
+        return; // Hentikan eksekusi jika Firebase gagal
     }
     
-    // 3. START LISTENERS AND AUTHENTICATION CHECK
+    // 3. START AUTH LISTENER
     setupAuthListener();
 };
+
+
+/**
+ * Fungsi untuk menginisialisasi Otentikasi Awal
+ * Digunakan untuk menangani __initial_auth_token
+ */
+async function initializeAuth() {
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    try {
+        if (initialAuthToken) {
+            // Jika ada token, gunakan sign-in custom token
+            await window.firebaseModular.signInWithCustomToken(auth, initialAuthToken);
+            console.log("[DEBUG AUTH] Custom Token Sign-in berhasil.");
+        } else {
+            // Jika tidak ada token, gunakan sign-in anonim
+            await window.firebaseModular.signInAnonymously(auth);
+            console.log("[DEBUG AUTH] Anonymous Sign-in berhasil.");
+        }
+    } catch (error) {
+        // Jika sign-in awal gagal, tampilkan pesan
+        console.error("Gagal melakukan Sign-in Awal:", error);
+        authError.textContent = `Gagal inisialisasi otentikasi: ${error.message}`;
+    }
+}
 
 
 // ------------------------------------
@@ -281,22 +311,14 @@ async function startAppAsUser() {
     sessionStorage.setItem('currentUserName', name);
     authError.textContent = '';
     
-    if (auth && !auth.currentUser) {
-        // If not logged in, perform anonymous sign-in
-        try {
-            // Note: The __initial_auth_token logic is usually handled by the environment, 
-            // but for a public-facing example, we default to anonymous sign-in if not already authenticated.
-            await auth.signInAnonymously();
-            console.log("[DEBUG AUTH] Anonymous Sign-in successful.");
-            // onAuthStateChanged will handle the rest
-        } catch (error) {
-            console.error("Failed to perform Anonymous Sign-in:", error);
-            authError.textContent = `Gagal inisialisasi otentikasi: ${error.message}`;
-        }
-    } else if (auth.currentUser) {
-        // Already logged in, just proceed with the stored name
+    // Karena otentikasi sudah dilakukan di initializeAuth, 
+    // kita hanya perlu menunggu onAuthStateChanged untuk memicu handleAuthSuccess.
+    // Jika auth.currentUser sudah ada, langsung panggil handleAuthSuccess
+    if (auth && auth.currentUser) {
         handleAuthSuccess(auth.currentUser);
     }
+    // Jika auth.currentUser null, onAuthStateChanged akan menangani setelah sign-in selesai
+    
 }
 window.startAppAsUser = startAppAsUser;
 
@@ -307,6 +329,10 @@ function handleAuthSuccess(user) {
 
     authSection.style.display = 'none';
     mainApp.style.display = 'block';
+    
+    // Ambil nama dari sessionStorage, jika ada
+    const storedName = sessionStorage.getItem('currentUserName');
+    currentUserName = storedName || 'Pengguna Anonim'; 
     userDisplayNameSpan.textContent = currentUserName; 
     
     setupExpenseFormListener();
@@ -316,21 +342,23 @@ function handleAuthSuccess(user) {
 function setupAuthListener() {
     if (!isFirebaseInitialized || !auth) return;
     
-    auth.onAuthStateChanged((user) => {
+    // FIX UTAMA: Menunggu onAuthStateChanged untuk memastikan user tidak null
+    window.firebaseModular.onAuthStateChanged(auth, (user) => {
         currentUserName = sessionStorage.getItem('currentUserName');
         
         if (user) {
-            // Check if user has provided a name yet
+            // Jika sudah ada user (sudah login), dan nama pengguna sudah diisi/tersimpan, 
+            // maka aplikasi utama bisa ditampilkan
             if (currentUserName) {
                 handleAuthSuccess(user);
             } else {
-                // Logged in anonymously, but needs name input to start the app logic
+                // User terotentikasi, tapi belum mengisi nama di UI
                 authSection.style.display = 'block';
                 mainApp.style.display = 'none';
-                currentUserId = user.uid; // Store ID temporarily
+                currentUserId = user.uid; // Simpan ID sementara
             }
         } else {
-            // Logged out
+            // User logout atau belum login
             currentUserId = null;
             currentUserName = null;
             allExpenseData = [];
@@ -412,14 +440,15 @@ async function handleExpenseSubmit(e) {
 
     if (!currentUserId || !currentUserName || !db) {
         authError.textContent = 'Layanan tidak tersedia. Silakan masuk (login) terlebih dahulu dan isi Nama Pengguna.';
-        return console.error("[DEBUG DATA] Failed to add. No authenticated user or name/db.");
+        return console.error("[DEBUG DATA] Gagal menambahkan. Tidak ada pengguna terotentikasi atau nama/db.");
     }
 
     const amount = parseInt(amountInput.value);
     const category = categoryInput.value;
     const description = descriptionInput.value;
     const date = new Date().toISOString().split('T')[0];
-    const timestamp = firebase.firestore.FieldValue.serverTimestamp(); // Use server timestamp
+    // Menggunakan serverTimestamp dari modular SDK
+    const timestamp = window.firebaseModular.serverTimestamp(); 
 
     const newExpense = {
         amount: amount,
@@ -432,19 +461,19 @@ async function handleExpenseSubmit(e) {
     };
 
     if (amount > 0 && category && description) {
-        // FIREBASE MODE
-        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        // FIREBASE MODE - Menggunakan collection modular
+        const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
         try {
-            await db.collection(collectionPath).add(newExpense); 
-            console.log("[DEBUG DATA] Transaction successfully added to Firestore!");
+            await window.firebaseModular.addDoc(collectionRef, newExpense); 
+            console.log("[DEBUG DATA] Transaksi berhasil ditambahkan ke Firestore!");
         } catch (error) {
-            console.error("[DEBUG DATA] Error adding document: ", error);
+            console.error("[DEBUG DATA] Error saat menambahkan dokumen: ", error);
             authError.textContent = 'Gagal menambah transaksi ke Cloud. Cek konsol.';
         }
 
         expenseForm.reset(); 
     } else {
-        console.log("[DEBUG DATA] Warning: Ensure all fields are filled correctly.");
+        console.log("[DEBUG DATA] Peringatan: Pastikan semua kolom diisi dengan benar.");
     }
 }
 
@@ -452,36 +481,35 @@ async function handleExpenseSubmit(e) {
 // Function 3B: READ (Load and Display Expenses)
 function loadExpenses() {
     if (!currentUserId || !db) {
-        return console.log("[DEBUG DATA] loadExpenses stopped. Prerequisites not met.");
+        return console.log("[DEBUG DATA] loadExpenses dihentikan. Prasyarat tidak terpenuhi.");
     }
     
-    // FIREBASE MODE
-    const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+    // FIREBASE MODE - Menggunakan query modular
+    const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
+    // NOTE: OrderBy timestamp diaktifkan kembali
+    const q = window.firebaseModular.query(collectionRef, window.firebaseModular.orderBy('timestamp', 'desc'));
     
     // Listen for real-time changes
-    db.collection(collectionPath)
-        .orderBy('timestamp', 'desc')
-        .onSnapshot(snapshot => {
-            console.log(`[DEBUG DATA] Snapshot received. Document count: ${snapshot.size}`);
+    window.firebaseModular.onSnapshot(q, (snapshot) => {
+            console.log(`[DEBUG DATA] Snapshot diterima. Jumlah dokumen: ${snapshot.size}`);
             const data = [];
             snapshot.forEach(doc => {
                 const item = doc.data();
-                // Ensure timestamp exists for sorting, use Date.now() fallback if serverTimestamp hasn't populated yet
-                const itemTimestamp = item.timestamp ? item.timestamp.toDate().getTime() : Date.now(); 
+                // Konversi Timestamp ke milidetik jika ada
+                const itemTimestamp = item.timestamp && typeof item.timestamp.toDate === 'function' ? item.timestamp.toDate().getTime() : Date.now(); 
                 data.push({ 
                     ...item, 
                     id: doc.id,
                     timestamp: itemTimestamp,
-                    // We can just trust the `date` field we set earlier
                 });
             });
-            // Sort by the timestamp in the data array to ensure order consistency
+            // Sorting di client side sebagai fallback/penyempurna
             data.sort((a, b) => b.timestamp - a.timestamp); 
-            renderUI(data); // Call helper to render
+            renderUI(data); // Panggil helper untuk render
         }, error => {
-            console.error("[DEBUG DATA] Error reading data (onSnapshot): ", error);
+            console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
             // Show error in UI
-            statusAlertDiv.classList.remove('hidden', 'bg-red-100', 'text-red-800');
+            statusAlertDiv.classList.remove('hidden');
             statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
             statusAlertDiv.innerHTML = `❌ **Kesalahan Data:** Gagal memuat data dari Cloud Firestore. Cek konsol untuk detail teknis.`;
         });
@@ -491,7 +519,7 @@ function loadExpenses() {
 // ------------------------------------
 // SECTION 4: VISUALIZATION AND MONTHLY RECAP
 // ------------------------------------
-// (This section remains the same as it operates on the global `allExpenseData` array)
+// (Bagian ini tidak diubah karena berfungsi dengan data yang sudah dimuat)
 
 function renderChartsAndSummary(data) {
     if (!monthlyChartCanvas || !monthlyRecapDiv) return;
@@ -674,7 +702,7 @@ function exportRawDataToCsv() {
     const currentDate = new Date().toISOString().split('T')[0];
     downloadCsv(csvContent, `pengeluaran_mentah_semua_${currentDate}.csv`);
     
-    console.log(`[EXPORT] Successfully downloaded All Raw Data (${allExpenseData.length} rows) to CSV.`);
+    console.log(`[EXPORT] Berhasil mengunduh Semua Data Mentah (${allExpenseData.length} baris) ke CSV.`);
 }
 window.exportRawDataToCsv = exportRawDataToCsv;
 
@@ -720,7 +748,7 @@ function exportMonthlyRecapToCsv() {
     const currentDate = new Date().toISOString().split('T')[0];
     downloadCsv(csvContent, `rekap_bulanan_semua_${currentDate}.csv`);
     
-    console.log(`[EXPORT] Successfully downloaded Monthly Recap (${sortedMonths.length} months) to CSV.`);
+    console.log(`[EXPORT] Berhasil mengunduh Rekap Bulanan (${sortedMonths.length} bulan) ke CSV.`);
 }
 window.exportMonthlyRecapToCsv = exportMonthlyRecapToCsv;
 
@@ -738,7 +766,7 @@ function exportSpecificMonthToCsv(yearMonth, displayMonth) {
     );
 
     if (filteredData.length === 0) {
-        console.log(`No transaction data recorded for month ${displayMonth}.`);
+        console.log(`Tidak ada data transaksi yang tercatat untuk bulan ${displayMonth}.`);
         return;
     }
 
@@ -765,7 +793,7 @@ function exportSpecificMonthToCsv(yearMonth, displayMonth) {
     const filename = `pengeluaran_${yearMonth}.csv`;
     downloadCsv(csvContent, filename);
     
-    console.log(`[EXPORT] Successfully downloaded Raw Data for ${displayMonth} (${filteredData.length} rows) to CSV.`);
+    console.log(`[EXPORT] Berhasil mengunduh Data Mentah untuk ${displayMonth} (${filteredData.length} baris) ke CSV.`);
 }
 window.exportSpecificMonthToCsv = exportSpecificMonthToCsv;
 
@@ -786,25 +814,24 @@ function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
     window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
         if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
+        const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
+        
         const updatePayload = {
             amount: parseInt(newAmount), 
             description: newDescription,
             category: newCategory,
-            // Add server timestamp field to trigger sorting update
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            // Perbarui tanggal juga
+            date: new Date().toISOString().split('T')[0], 
+            // Tidak perlu perbarui timestamp, tapi bisa ditambahkan untuk record
         };
-        
-        const docRefPath = `/artifacts/${appId}/users/${currentUserId}/expenses/${id}`;
+
         try {
-            // Using the compat API's update method on the document reference
-            await db.collection(`/artifacts/${appId}/users/${currentUserId}/expenses`).doc(id).update(updatePayload);
-            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil DIPERBARUI di Firestore!`);
-            console.log("CATATAN: UI akan otomatis me-refresh karena listener onSnapshot.");
+            await window.firebaseModular.updateDoc(docRef, updatePayload);
+            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil diperbarui.`);
         } catch (error) {
-            console.error(`[DEBUG DATA] Error memperbarui dokumen ID ${id}: `, error);
+            console.error(`[DEBUG DATA] Gagal memperbarui dokumen ID ${id}: `, error);
         }
     };
-    // End of handleEditClick
 }
 window.handleEditClick = handleEditClick;
 
@@ -812,28 +839,26 @@ window.handleEditClick = handleEditClick;
 // Function 6B: DELETE (Delete Expense) - Modified for console
 function handleDeleteClick(docId) {
     console.log("--- DELETE TRANSACTION ---");
-    console.log(`ID Dokumen yang akan dihapus: ${docId}`);
-    console.log("Silakan panggil fungsi 'manualDelete' di konsol untuk mengonfirmasi dan menghapus:");
+    console.log(`Document ID: ${docId}`);
+    console.log("PERINGATAN: Penghapusan bersifat permanen.");
+    console.log("Silakan panggil fungsi 'manualDelete' di konsol untuk konfirmasi penghapusan:");
     console.log(`Contoh: manualDelete('${docId}')`);
 
     // Manual helper function for debugging/testing
     window.manualDelete = async (id) => {
         if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
-        const docRefPath = `/artifacts/${appId}/users/${currentUserId}/expenses/${id}`;
+        const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
+        
         try {
-            // Using the compat API's delete method on the document reference
-            await db.collection(`/artifacts/${appId}/users/${currentUserId}/expenses`).doc(id).delete();
-            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil DIHAPUS dari Firestore!`);
-            console.log("CATATAN: UI akan otomatis me-refresh karena listener onSnapshot.");
+            await window.firebaseModular.deleteDoc(docRef);
+            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil dihapus.`);
         } catch (error) {
-            console.error(`[DEBUG DATA] Error menghapus dokumen ID ${id}: `, error);
+            console.error(`[DEBUG DATA] Gagal menghapus dokumen ID ${id}: `, error);
         }
     };
-    // End of handleDeleteClick
 }
 window.handleDeleteClick = handleDeleteClick;
-
 </script>
 </body>
 </html>
