@@ -5,21 +5,68 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplikasi Pengeluaran Mudah</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        #expense-form input, #expense-form select, #expense-form button { margin-bottom: 10px; padding: 8px; width: 100%; box-sizing: border-box;}
-        .expense-item { border-bottom: 1px solid #eee; padding: 10px 0; display: flex; justify-content: space-between; }
-        .amount { font-weight: bold; }
+        body { font-family: 'Inter', sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background-color: #f4f4f9; color: #333;}
+        h1, h2, h3 { color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 5px; }
+        
+        /* Gaya Formulir & Button */
+        #expense-form input, #expense-form select, #expense-form button, 
+        #auth-section input, #auth-section button { 
+            margin-bottom: 10px; 
+            padding: 12px; 
+            width: 100%; 
+            box-sizing: border-box; 
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        button {
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        /* Gaya Item Pengeluaran */
+        .expense-item { 
+            border-bottom: 1px solid #ddd; 
+            padding: 15px 0; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+        }
+        .amount { 
+            font-weight: bold; 
+            color: #d9534f; /* Warna merah untuk pengeluaran */
+            font-size: 1.1em;
+        }
+        
+        /* Gaya Section Auth */
+        #auth-section, #main-app {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
     </style>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> ```
+    
+    <!-- 1. SDK Firebase: URUTAN PEMUATAN SUDAH BENAR -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script> 
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script> 
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
+
+    <!-- script.js dimuat di akhir BODY untuk memastikan semua elemen HTML sudah tersedia -->
 </head>
 <body>
 
-<h1>💰 Catat Pengeluaran</h1>
+<!-- JUDUL UTAMA APLIKASI -->
+<h1>💰 Catat Pengeluaran Harian</h1>
 
+    <!-- BAGIAN 1: OTENTIKASI (LOGIN/DAFTAR) -->
     <div id="auth-section">
         <h2>Akses Aplikasi</h2>
         <input type="email" id="auth-email" placeholder="Email" required>
@@ -29,53 +76,43 @@
         <div id="auth-error" style="color: red; margin-top: 10px;"></div>
     </div>
     
+    <!-- BAGIAN 2: APLIKASI UTAMA (TIDAK TERLIHAT SEBELUM LOGIN) -->
     <div id="main-app" style="display: none;">
-        <button onclick="signOut()" style="float: right;">Keluar</button>
+        <button onclick="signOut()" style="float: right; padding: 5px 10px; font-size: 14px; background-color: #f0ad4e;">Keluar</button>
         <h3>Halo, <span id="user-email">Pengguna</span>!</h3>
         
+        <!-- Formulir Pengeluaran -->
+        <h2>📝 Catat Pengeluaran</h2>
         <form id="expense-form">
-            </form>
+            <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required>
+            <input type="text" id="description" placeholder="Deskripsi (contoh: Kopi dan Roti)" required>
+            <select id="category" required>
+                <option value="" disabled selected>Pilih Kategori</option>
+                <option value="Makanan">Makanan</option>
+                <option value="Transportasi">Transportasi</option>
+                <option value="Belanja">Belanja</option>
+                <option value="Hiburan">Hiburan</option>
+                <option value="Lainnya">Lainnya</option>
+            </select>
+            <button type="submit">Tambah Pengeluaran</button>
+        </form>
         
         <hr>
         
-        <h2>📊 Ringkasan Hari Ini</h2>
-        <p>Total Pengeluaran: <span id="total-amount">Rp 0</span></p>
+        <!-- Ringkasan -->
+        <h2>📊 Ringkasan Total</h2>
+        <p>Total Pengeluaran: <span id="total-amount" style="color: #d9534f;">Rp 0</span></p>
 
         <hr>
         
+        <!-- Riwayat Transaksi -->
         <h2>📜 Riwayat Transaksi</h2>
         <div id="expense-list">
-            </div>
-    </div>
-    <h1>💰 Catat Pengeluaran</h1>
-
-    <form id="expense-form">
-        <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required>
-
-<input type="text" id="description" placeholder="Deskripsi (contoh: Kopi dan Roti)" required> 
-</select>
-        <select id="category" required>
-            <option value="" disabled selected>Pilih Kategori</option>
-            <option value="Makanan">Makanan</option>
-            <option value="Transportasi">Transportasi</option>
-            <option value="Belanja">Belanja</option>
-            <option value="Hiburan">Hiburan</option>
-            <option value="Lainnya">Lainnya</option>
-        </select>
-        <button type="submit">Tambah Pengeluaran</button>
-    </form>
-    
-    <hr>
-    
-    <h2>📊 Ringkasan Hari Ini</h2>
-    <p>Total Pengeluaran: <span id="total-amount">Rp 0</span></p>
-
-    <hr>
-    
-    <h2>📜 Riwayat Transaksi</h2>
-    <div id="expense-list">
+            <!-- Data akan dimuat di sini oleh script.js -->
         </div>
-
+    </div>
+    
+    <!-- SCRIPT.JS DIMUAT DI AKHIR UNTUK MEMASTIKAN SEMUA ID DITEMUKAN -->
     <script src="script.js"></script>
 </body>
 </html>

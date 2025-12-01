@@ -12,7 +12,31 @@ const firebaseConfig = {
 // Inisialisasi Firebase dan Firestore
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+
+// PENTING: Inisialisasi Auth (Authentication)
+const auth = firebase.auth(); // <-- BARIS INI YANG HILANG/TERLEWAT!
+
 const expensesCollection = db.collection("AturUang"); // Nama koleksi data
+
+// BAGIAN 2: DEKLARASI VARIABEL (WAJIB DI ATAS)
+// ------------------------------------
+// A. Deklarasi Input untuk Otentikasi
+const emailInput = document.getElementById('auth-email');
+const passwordInput = document.getElementById('auth-password');
+const authError = document.getElementById('auth-error');
+
+// B. Deklarasi Elemen Tampilan Utama
+const authSection = document.getElementById('auth-section');
+const mainApp = document.getElementById('main-app');
+const userEmailSpan = document.getElementById('user-email');
+
+// C. Deklarasi Elemen Pengeluaran
+const expenseForm = document.getElementById('expense-form');
+const amountInput = document.getElementById('amount');
+const descriptionInput = document.getElementById('description');
+const categoryInput = document.getElementById('category');
+const expenseList = document.getElementById('expense-list');
+const totalAmountSpan = document.getElementById('total-amount');
 
 // 2. FUNGSI MENAMBAH PENGELUARAN (CREATE)
 // ... (Bagian atas fungsi tetap sama) ...
@@ -103,8 +127,9 @@ const auth = firebase.auth();
 const authSection = document.getElementById('auth-section');
 const mainApp = document.getElementById('main-app');
 const userEmailSpan = document.getElementById('user-email');
-const authError = document.getElementById('auth-error');
-
+const authError = document.getElementById('auth-error'); // Untuk menampilkan error login
+const expenseList = document.getElementById('expense-list'); // Untuk di-reset saat logout
+const totalAmountSpan = document.getElementById('total-amount'); // Untuk di-reset saat logout
 const emailInput = document.getElementById('auth-email');
 const passwordInput = document.getElementById('auth-password');
 
