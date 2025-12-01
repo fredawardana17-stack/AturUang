@@ -217,14 +217,21 @@ window.onload = async function() {
         
         // Coba parsing konfigurasi yang disuntikkan secara global
         const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-        if (configString.trim() !== '') {
-            firebaseConfig = JSON.parse(configString);
+        
+        if (configString.trim() !== '' && configString.trim() !== '{}') {
+            try {
+                firebaseConfig = JSON.parse(configString);
+            } catch (jsonError) {
+                console.error("[FATAL ERROR - CONFIG] Gagal Parsing JSON Konfigurasi:", configString, jsonError);
+                throw new Error(`Gagal mem-parsing string konfigurasi Firebase (bukan JSON valid).`);
+            }
         }
-
+        
         // VALIDASI KRITIS: Cek Project ID
-        if (!firebaseConfig.projectId) {
-            console.error("[FATAL ERROR - CONFIG] Konfigurasi yang diparsing:", firebaseConfig);
-            throw new Error(`"projectId" not provided in firebase.initializeApp. Ini menunjukkan kegagalan dalam pengambilan konfigurasi global '__firebase_config'.`);
+        if (!firebaseConfig || !firebaseConfig.projectId) {
+            console.error("[FATAL ERROR - CONFIG] Konfigurasi yang diparsing (error expected):", firebaseConfig);
+            // This is the source of the persistent error, thrown only if projectId is missing.
+            throw new Error(`"projectId" not provided in firebase.initializeApp. Ini menunjukkan kegagalan dalam pengambilan konfigurasi global '__firebase_config' atau nilainya kosong.`);
         }
         
         console.log("[DEBUG CONFIG] Konfigurasi Firebase berhasil dimuat untuk Project ID:", firebaseConfig.projectId);
@@ -243,7 +250,7 @@ window.onload = async function() {
         console.error(`[FATAL ERROR] Gagal menginisialisasi Firebase: ${e.message}`, e);
         statusAlertDiv.classList.remove('hidden');
         statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
-        statusAlertDiv.innerHTML = '❌ **Kesalahan Fatal:** Gagal menyambung ke database. Cek konsol (F12) untuk detail error konfigurasi.';
+        statusAlertDiv.innerHTML = `❌ **Kesalahan Fatal:** Gagal menyambung ke database. Cek konsol (F12) untuk detail error: **${e.message.split('.')[0]}**.`;
         return; 
     }
     
@@ -258,12 +265,12 @@ window.onload = async function() {
  */
 async function initializeAuth() {
     if (!auth) {
-        // Objek auth harus ada jika isFirebaseInitialized true, tapi sebagai pengaman:
         console.error("[DEBUG AUTH] initializeAuth dipanggil tetapi objek auth belum siap.");
         return;
     }
 
-    const initialAuthToken = typeof __initial_token !== 'undefined' ? __initial_token : null; 
+    // Menggunakan nama variabel yang benar sesuai instruksi
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
     
     try {
         if (auth.currentUser) {
@@ -272,7 +279,7 @@ async function initializeAuth() {
         }
 
         if (initialAuthToken) {
-            // FIX: Gunakan __initial_token jika ada
+            // Menggunakan __initial_auth_token jika ada
             await window.firebaseModular.signInWithCustomToken(auth, initialAuthToken);
             console.log("[DEBUG AUTH] Custom Token Sign-in berhasil.");
         } else {
@@ -331,7 +338,7 @@ async function startAppAsUser() {
     // Pastikan Auth tersedia
     if (!auth || !isFirebaseInitialized) {
         authError.textContent = 'Layanan Firebase belum siap. Tunggu sebentar atau refresh.';
-        return console.error("[DEBUG AUTH] Tombol diklik saat Firebase belum siap.");
+        return console.error("[DEBUG AUTH] Tombol diklik saat Firebase belum siap. Cek error konfigurasi di atas.");
     }
 
     // Jika Auth sudah selesai, langsung masuk
