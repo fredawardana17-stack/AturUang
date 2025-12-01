@@ -47,7 +47,7 @@
         }
     </style>
     
-    <!-- SDK Firebase Kompatibilitas Layer -->
+    <!-- SDK Firebase Kompatibilitas Layer (Digunakan karena versi ini paling stabil di environment ini) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
@@ -116,20 +116,31 @@
 // ------------------------------------
 // BAGIAN 1: KONFIGURASI, INISIALISASI, DAN CAKUPAN GLOBAL
 // ------------------------------------
-let db;
-let auth;
+let db = null;
+let auth = null;
 let currentUserId = null;
 let emailInput, passwordInput, authError, authSection, mainApp, userEmailSpan;
 let expenseForm, amountInput, descriptionInput, categoryInput, expenseList, totalAmountSpan;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+// Pastikan firebaseConfig adalah objek, bahkan jika string konfigurasinya kosong
+let firebaseConfig = {};
+try {
+    const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+    if (configString.trim() !== '') {
+        firebaseConfig = JSON.parse(configString);
+    }
+} catch (e) {
+    console.error("[FATAL ERROR] Gagal parsing __firebase_config. Konfigurasi diatur ke kosong.", e);
+}
+
 
 // ------------------------------------
 // SELURUH LOGIKA APLIKASI DIJALANKAN SETELAH DOM SIAP
 // ------------------------------------
 window.onload = function() {
-    // 1. DOM Elements (Sekarang aman karena HTML sudah dimuat)
+    // 1. DOM Elements
     emailInput = document.getElementById('auth-email');
     passwordInput = document.getElementById('auth-password');
     authError = document.getElementById('auth-error');
@@ -143,18 +154,18 @@ window.onload = function() {
     expenseList = document.getElementById('expense-list');
     totalAmountSpan = document.getElementById('total-amount');
 
-    // 2. INISIALISASI FIREBASE
+    // 2. INISIALISASI FIREBASE (BLOK TAHAN BANTING)
     try {
         if (!firebaseConfig.projectId) {
-            console.warn("[WARNING FIREBASE] Konfigurasi Firebase terlihat tidak lengkap (Missing Project ID). Mencoba melanjutkan dengan asumsi token kustom akan berhasil.");
-            if (authError) authError.textContent = 'Peringatan: Konfigurasi Firebase kurang. Mencoba masuk secara Anonim...';
-            // TIDAK ADA 'return' di sini, agar kode mencoba auth.
+            console.warn("[WARNING FIREBASE] Konfigurasi Firebase (Project ID) TIDAK ADA. Otentikasi standar (Sign Up/Sign In) kemungkinan akan GAGAL. Mencoba melanjutkan untuk Auth Token internal.");
+            if (authError) authError.textContent = 'Peringatan: Config Firebase bermasalah. Mencoba Masuk Anonim...';
         }
 
-        // Inisialisasi
+        // Inisialisasi Firebase
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
+        
         db = firebase.firestore();
         auth = firebase.auth();
         
@@ -165,9 +176,12 @@ window.onload = function() {
         setupAuthListener();
         
     } catch (e) {
-        console.error("[FATAL ERROR] Gagal menginisialisasi Firebase:", e);
+        console.error("[FATAL ERROR] Gagal menginisialisasi Firebase di try/catch block:", e);
+        // Penting: Setel ke null jika gagal total untuk mencegah error 'undefined' di fungsi lain
+        auth = null;
+        db = null;
         if (authError) {
-            authError.textContent = 'Kesalahan Fatal saat inisialisasi Firebase. Cek Konsol (F12).';
+            authError.textContent = 'Kesalahan Fatal: Gagal inisialisasi Firebase. Cek Konsol (F12).';
         }
     }
 };
@@ -178,7 +192,10 @@ window.onload = function() {
 // ------------------------------------
 
 async function signUp() {
-    if (!auth) return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
+    if (!auth) {
+        authError.textContent = 'Layanan otentikasi (auth) tidak tersedia. Silakan cek konsol.';
+        return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
+    }
     const email = emailInput.value;
     const password = passwordInput.value;
     authError.textContent = '';
@@ -194,7 +211,10 @@ async function signUp() {
 }
 
 async function signIn() {
-    if (!auth) return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
+    if (!auth) {
+        authError.textContent = 'Layanan otentikasi (auth) tidak tersedia. Silakan cek konsol.';
+        return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
+    }
     const email = emailInput.value;
     const password = passwordInput.value;
     authError.textContent = '';
@@ -228,6 +248,8 @@ window.signOut = signOut;
 // Fungsi untuk menangani otentikasi awal (custom token atau anonim)
 async function initialAuth() {
     if (!auth) return;
+    
+    // Gunakan token kustom jika ada
     if (typeof __initial_auth_token !== 'undefined') {
         try {
             console.log("[DEBUG AUTH] Mencoba Masuk dengan Custom Token...");
@@ -237,6 +259,7 @@ async function initialAuth() {
             await auth.signInAnonymously();
         }
     } else {
+        // Jika tidak ada, masuk anonim
         console.log("[DEBUG AUTH] Custom Token tidak tersedia, Masuk Anonim...");
         await auth.signInAnonymously();
     }
@@ -258,7 +281,7 @@ function setupAuthListener() {
             if (authSection && mainApp) {
                 authSection.style.display = 'none';
                 mainApp.style.display = 'block';
-                // Jika anonim, tampilkan UID (penting untuk debugging rules)
+                // Tampilkan ID jika anonim (penting untuk debugging rules)
                 userEmailSpan.textContent = user.email || `ID: ${currentUserId}`; 
                 authError.textContent = '';
             }
@@ -316,8 +339,6 @@ async function handleExpenseSubmit(e) {
     const date = new Date().toISOString().split('T')[0];
     
     // Path Collection Privat
-    // PENTING: Firestore Security Rules harus mengizinkan akses ke path ini:
-    // /artifacts/{appId}/users/{userId}/expenses
     const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
     const userExpensesCollection = db.collection(collectionPath);
     console.log(`[DEBUG DATA] Mencoba menambah data ke path: ${collectionPath}`);
@@ -426,6 +447,7 @@ function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
     // Fungsi bantuan manual untuk debugging/pengujian
     window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
         if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
+        if (!db) return console.error("Layanan database (db) tidak tersedia.");
         
         const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
         const expenseDocRef = db.collection(collectionPath).doc(id);
@@ -459,6 +481,7 @@ function handleDeleteClick(docId) {
     // Fungsi bantuan manual untuk debugging/pengujian
     window.manualDelete = async (id) => {
         if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
+        if (!db) return console.error("Layanan database (db) tidak tersedia.");
         
         const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
         const expenseDocRef = db.collection(collectionPath).doc(id);
