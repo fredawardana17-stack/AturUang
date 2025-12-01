@@ -54,7 +54,7 @@
         }
     </style>
     
-    <!-- FIX UTAMA: Mengganti library compat v9 dengan Modular SDK v11 -->
+    <!-- FIREBASE MODULAR SDK IMPORTS (v11) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -85,6 +85,7 @@
         <input type="text" id="user-name-input" placeholder="Masukkan Nama Anda (Contoh: Budi)" required class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
         
         <div class="flex">
+            <!-- Panggil startAppAsUser saat tombol diklik -->
             <button id="start-button" onclick="startAppAsUser()" class="flex-1 p-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150">Mulai & Akses Data Cloud</button>
         </div>
         <div id="auth-error" class="mt-4 text-red-600 text-sm font-medium"></div>
@@ -183,7 +184,7 @@ let monthlyChartCanvas, monthlyRecapDiv, statusAlertDiv;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// Ambil konfigurasi dari variabel global
+// FIX: Pastikan konfigurasi diambil dari variabel global lingkungan.
 let firebaseConfig = {};
 try {
     const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
@@ -217,10 +218,15 @@ window.onload = async function() {
     statusAlertDiv = document.getElementById('status-alert');
 
 
-    // 2. FIREBASE INITIALIZATION (Menggunakan pola modular)
+    // 2. FIREBASE INITIALIZATION
     try {
-        if (!firebaseConfig.projectId || !window.firebaseModular) {
-            throw new Error("[FIREBASE ERROR] Konfigurasi Firebase (Project ID) HILANG atau impor modular gagal.");
+        if (!window.firebaseModular) {
+            throw new Error("Impor modular Firebase gagal. Pastikan CDN link diakses dengan benar.");
+        }
+        
+        // Cek proyek ID sebagai indikasi konfigurasi valid
+        if (!firebaseConfig.projectId) {
+            console.warn("[WARN] Project ID belum ditemukan. Mungkin sedang menunggu injeksi variabel lingkungan.");
         }
         
         // Inisialisasi Aplikasi Firebase
@@ -230,15 +236,15 @@ window.onload = async function() {
         window.firebaseModular.setLogLevel('debug');
         isFirebaseInitialized = true;
 
-        // Inisialisasi Otentikasi
-        await initializeAuth();
+        // Inisialisasi Otentikasi (memulai proses sign-in asinkron)
+        await initializeAuth(); 
         
     } catch (e) {
         console.error(`[FATAL ERROR] Gagal menginisialisasi Firebase: ${e.message}`, e);
         statusAlertDiv.classList.remove('hidden');
         statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
         statusAlertDiv.innerHTML = '❌ **Kesalahan Fatal:** Gagal menyambung ke database. Cek konsol (F12) untuk detail error konfigurasi.';
-        return; // Hentikan eksekusi jika Firebase gagal
+        return; 
     }
     
     // 3. START AUTH LISTENER
@@ -253,17 +259,23 @@ window.onload = async function() {
 async function initializeAuth() {
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
     try {
+        if (!auth) {
+            throw new Error("Objek Auth belum tersedia.");
+        }
+
+        if (auth.currentUser) {
+            console.log("[DEBUG AUTH] Pengguna sudah terautentikasi (berhasil dari initializeAuth sebelumnya).");
+            return;
+        }
+
         if (initialAuthToken) {
-            // Jika ada token, gunakan sign-in custom token
             await window.firebaseModular.signInWithCustomToken(auth, initialAuthToken);
             console.log("[DEBUG AUTH] Custom Token Sign-in berhasil.");
         } else {
-            // Jika tidak ada token, gunakan sign-in anonim
             await window.firebaseModular.signInAnonymously(auth);
             console.log("[DEBUG AUTH] Anonymous Sign-in berhasil.");
         }
     } catch (error) {
-        // Jika sign-in awal gagal, tampilkan pesan
         console.error("Gagal melakukan Sign-in Awal:", error);
         authError.textContent = `Gagal inisialisasi otentikasi: ${error.message}`;
     }
@@ -311,19 +323,35 @@ async function startAppAsUser() {
     sessionStorage.setItem('currentUserName', name);
     authError.textContent = '';
     
-    // Karena otentikasi sudah dilakukan di initializeAuth, 
-    // kita hanya perlu menunggu onAuthStateChanged untuk memicu handleAuthSuccess.
-    // Jika auth.currentUser sudah ada, langsung panggil handleAuthSuccess
-    if (auth && auth.currentUser) {
-        handleAuthSuccess(auth.currentUser);
-    }
-    // Jika auth.currentUser null, onAuthStateChanged akan menangani setelah sign-in selesai
+    // FIX UTAMA untuk error currentUser: 
+    // Pastikan proses sign-in sudah berjalan atau jalankan kembali.
+    // Kemudian tunggu onAuthStateChanged untuk memicu handleAuthSuccess.
     
+    if (!auth || !isFirebaseInitialized) {
+        authError.textContent = 'Layanan Firebase belum siap. Tunggu sebentar atau refresh.';
+        return console.error("[DEBUG AUTH] Tombol diklik saat Firebase belum siap.");
+    }
+
+    // Jika Auth sudah selesai, langsung masuk
+    if (auth.currentUser) {
+        handleAuthSuccess(auth.currentUser);
+    } else {
+        // Jika belum selesai (race condition), coba panggil initializeAuth lagi
+        // dan tampilkan pesan loading. onAuthStateChanged akan menangani sisanya.
+        await initializeAuth(); 
+        console.log("[DEBUG AUTH] Auth sedang dalam proses. Menunggu onAuthStateChanged...");
+        statusAlertDiv.classList.remove('hidden');
+        statusAlertDiv.classList.add('bg-blue-100', 'text-blue-800');
+        statusAlertDiv.innerHTML = '⏳ **Memproses Login:** Sedang menunggu koneksi aman ke Cloud...';
+    }
 }
 window.startAppAsUser = startAppAsUser;
 
 
 function handleAuthSuccess(user) {
+    // Sembunyikan pesan status loading/error jika ada
+    statusAlertDiv.classList.add('hidden');
+    
     currentUserId = user.uid;
     console.log(`[DEBUG AUTH] Status: LOGGED IN. UID: ${currentUserId}`);
 
@@ -342,20 +370,18 @@ function handleAuthSuccess(user) {
 function setupAuthListener() {
     if (!isFirebaseInitialized || !auth) return;
     
-    // FIX UTAMA: Menunggu onAuthStateChanged untuk memastikan user tidak null
     window.firebaseModular.onAuthStateChanged(auth, (user) => {
         currentUserName = sessionStorage.getItem('currentUserName');
         
         if (user) {
-            // Jika sudah ada user (sudah login), dan nama pengguna sudah diisi/tersimpan, 
-            // maka aplikasi utama bisa ditampilkan
+            // User terautentikasi. Lanjutkan ke aplikasi utama jika nama sudah diisi.
             if (currentUserName) {
                 handleAuthSuccess(user);
             } else {
-                // User terotentikasi, tapi belum mengisi nama di UI
+                // User terotentikasi, tapi belum mengisi nama di UI. Tetap di Auth screen.
                 authSection.style.display = 'block';
                 mainApp.style.display = 'none';
-                currentUserId = user.uid; // Simpan ID sementara
+                currentUserId = user.uid; 
             }
         } else {
             // User logout atau belum login
@@ -447,7 +473,6 @@ async function handleExpenseSubmit(e) {
     const category = categoryInput.value;
     const description = descriptionInput.value;
     const date = new Date().toISOString().split('T')[0];
-    // Menggunakan serverTimestamp dari modular SDK
     const timestamp = window.firebaseModular.serverTimestamp(); 
 
     const newExpense = {
@@ -461,7 +486,6 @@ async function handleExpenseSubmit(e) {
     };
 
     if (amount > 0 && category && description) {
-        // FIREBASE MODE - Menggunakan collection modular
         const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
         try {
             await window.firebaseModular.addDoc(collectionRef, newExpense); 
@@ -484,9 +508,7 @@ function loadExpenses() {
         return console.log("[DEBUG DATA] loadExpenses dihentikan. Prasyarat tidak terpenuhi.");
     }
     
-    // FIREBASE MODE - Menggunakan query modular
     const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
-    // NOTE: OrderBy timestamp diaktifkan kembali
     const q = window.firebaseModular.query(collectionRef, window.firebaseModular.orderBy('timestamp', 'desc'));
     
     // Listen for real-time changes
@@ -519,7 +541,7 @@ function loadExpenses() {
 // ------------------------------------
 // SECTION 4: VISUALIZATION AND MONTHLY RECAP
 // ------------------------------------
-// (Bagian ini tidak diubah karena berfungsi dengan data yang sudah dimuat)
+// (Fungsi-fungsi ini tidak diubah)
 
 function renderChartsAndSummary(data) {
     if (!monthlyChartCanvas || !monthlyRecapDiv) return;
@@ -820,9 +842,7 @@ function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
             amount: parseInt(newAmount), 
             description: newDescription,
             category: newCategory,
-            // Perbarui tanggal juga
             date: new Date().toISOString().split('T')[0], 
-            // Tidak perlu perbarui timestamp, tapi bisa ditambahkan untuk record
         };
 
         try {
