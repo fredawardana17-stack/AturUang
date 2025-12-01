@@ -12,7 +12,7 @@ const firebaseConfig = {
 // Inisialisasi Firebase dan Firestore
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const expensesCollection = db.collection("expenses"); // Nama koleksi data
+const expensesCollection = db.collection("AturUang"); // Nama koleksi data
 
 // 2. FUNGSI MENAMBAH PENGELUARAN (CREATE)
 // ... (Bagian atas fungsi tetap sama) ...
@@ -181,7 +181,7 @@ async function editExpense(docId, oldAmount, oldCategory, oldDescription) {
 
     if (newAmount && newDescription && newCategory) {
         try {
-            await db.collection("expenses").doc(docId).update({
+            await db.collection("AturUang").doc(docId).update({
                 amount: parseInt(newAmount), // Pastikan tetap integer
                 description: newDescription,
                 category: newCategory
