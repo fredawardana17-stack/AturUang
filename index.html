@@ -21,6 +21,10 @@
             display: flex; 
             justify-content: space-between; 
             align-items: center;
+            flex-wrap: wrap; /* Added for mobile responsiveness */
+        }
+        .expense-item > div {
+            padding: 4px 0;
         }
         .amount { 
             font-weight: bold; 
@@ -51,8 +55,6 @@
     </style>
     
     <!-- Firebase SDK Compatibility Layer Imports (Using v9+ Modular style for robustness) -->
-    <!-- NOTE: We MUST use the compatibility layer imports when injecting Firebase into a single HTML file 
-         in this environment to ensure global availability of 'firebase.firestore', etc. -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
@@ -282,6 +284,8 @@ async function startAppAsUser() {
     if (auth && !auth.currentUser) {
         // If not logged in, perform anonymous sign-in
         try {
+            // Note: The __initial_auth_token logic is usually handled by the environment, 
+            // but for a public-facing example, we default to anonymous sign-in if not already authenticated.
             await auth.signInAnonymously();
             console.log("[DEBUG AUTH] Anonymous Sign-in successful.");
             // onAuthStateChanged will handle the rest
@@ -370,13 +374,13 @@ function renderExpenseList(data) {
         const userNameDisplay = item.userName ? `<span class="text-xs font-semibold text-indigo-600 mr-2">[${item.userName}]</span>` : '';
 
         itemDiv.innerHTML = `
-            <div style="flex-grow: 1;">
+            <div style="flex-grow: 1; max-width: 70%; min-width: 200px;">
                 ${userNameDisplay}
                 <strong class="text-gray-900">${item.description}</strong> 
                 <span class="text-sm text-gray-500">(${item.category}) - ${item.date}</span>
             </div>
-            <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
-            <div class="flex space-x-2">
+            <div class="amount flex-none mr-4">Rp ${itemAmount.toLocaleString('id-ID')}</div>
+            <div class="flex space-x-2 flex-none mt-2 sm:mt-0">
                 <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${item.category}', '${item.description}')" 
                         class="p-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition duration-150">
                     Edit
@@ -468,7 +472,6 @@ function loadExpenses() {
                     ...item, 
                     id: doc.id,
                     timestamp: itemTimestamp,
-                    // Reformat date if using server timestamp logic might override it, but here we manually set date
                     // We can just trust the `date` field we set earlier
                 });
             });
@@ -775,13 +778,13 @@ window.exportSpecificMonthToCsv = exportSpecificMonthToCsv;
 function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
     console.log("--- EDIT TRANSACTION ---");
     console.log(`Document ID: ${docId}`);
-    console.log(`Old Data: Amount: ${oldAmount}, Category: ${oldCategory}, Description: ${oldDescription}`);
-    console.log("Please call the 'manualEdit' function in the console to update:");
-    console.log(`Example: manualEdit('${docId}', 50000, 'Baru', 'Deskripsi Baru')`);
+    console.log(`Old Data: Jumlah: ${oldAmount}, Kategori: ${oldCategory}, Deskripsi: ${oldDescription}`);
+    console.log("Silakan panggil fungsi 'manualEdit' di konsol untuk memperbarui:");
+    console.log(`Contoh: manualEdit('${docId}', 50000, 'Transportasi', 'Bensin Baru')`);
 
     // Manual helper function for debugging/testing
     window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
-        if (!currentUserId || !db) return console.error("No authenticated user or database connection.");
+        if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
         const updatePayload = {
             amount: parseInt(newAmount), 
@@ -790,53 +793,47 @@ function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
             // Add server timestamp field to trigger sorting update
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         };
-
-        // FIREBASE
-        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-        const expenseDocRef = db.collection(collectionPath).doc(id);
+        
+        const docRefPath = `/artifacts/${appId}/users/${currentUserId}/expenses/${id}`;
         try {
-            await expenseDocRef.update(updatePayload);
-            console.log(`[MANUAL SUCCESS] Transaction ${id} successfully updated in Firestore.`);
+            // Using the compat API's update method on the document reference
+            await db.collection(`/artifacts/${appId}/users/${currentUserId}/expenses`).doc(id).update(updatePayload);
+            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil DIPERBARUI di Firestore!`);
+            console.log("CATATAN: UI akan otomatis me-refresh karena listener onSnapshot.");
         } catch (error) {
-            console.error("[MANUAL FAIL] Error updating document in Firestore: ", error);
-            // Show error in UI
-            statusAlertDiv.classList.remove('hidden', 'bg-green-100', 'text-green-800');
-            statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
-            statusAlertDiv.innerHTML = `❌ **Kesalahan Update:** Gagal mengupdate transaksi. Cek konsol.`;
+            console.error(`[DEBUG DATA] Error memperbarui dokumen ID ${id}: `, error);
         }
     };
+    // End of handleEditClick
 }
+window.handleEditClick = handleEditClick;
+
 
 // Function 6B: DELETE (Delete Expense) - Modified for console
 function handleDeleteClick(docId) {
     console.log("--- DELETE TRANSACTION ---");
-    console.log(`Document ID: ${docId}`);
-    console.log("To delete, please call the 'manualDelete' function in the console:");
-    console.log(`Example: manualDelete('${docId}')`);
+    console.log(`ID Dokumen yang akan dihapus: ${docId}`);
+    console.log("Silakan panggil fungsi 'manualDelete' di konsol untuk mengonfirmasi dan menghapus:");
+    console.log(`Contoh: manualDelete('${docId}')`);
 
     // Manual helper function for debugging/testing
     window.manualDelete = async (id) => {
-        if (!currentUserId || !db) return console.error("No authenticated user or database connection.");
+        if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
-        // FIREBASE
-        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-        const expenseDocRef = db.collection(collectionPath).doc(id);
+        const docRefPath = `/artifacts/${appId}/users/${currentUserId}/expenses/${id}`;
         try {
-            await expenseDocRef.delete();
-            console.log(`[MANUAL SUCCESS] Transaction ${id} successfully deleted from Firestore.`);
+            // Using the compat API's delete method on the document reference
+            await db.collection(`/artifacts/${appId}/users/${currentUserId}/expenses`).doc(id).delete();
+            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil DIHAPUS dari Firestore!`);
+            console.log("CATATAN: UI akan otomatis me-refresh karena listener onSnapshot.");
         } catch (error) {
-            console.error("[MANUAL FAIL] Error deleting document in Firestore: ", error);
-            // Show error in UI
-            statusAlertDiv.classList.remove('hidden', 'bg-green-100', 'text-green-800');
-            statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
-            statusAlertDiv.innerHTML = `❌ **Kesalahan Hapus:** Gagal menghapus transaksi. Cek konsol.`;
+            console.error(`[DEBUG DATA] Error menghapus dokumen ID ${id}: `, error);
         }
     };
+    // End of handleDeleteClick
 }
-
-// Make new handler functions globally available
-window.handleEditClick = handleEditClick;
 window.handleDeleteClick = handleDeleteClick;
+
 </script>
 </body>
 </html>
