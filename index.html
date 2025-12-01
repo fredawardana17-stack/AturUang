@@ -146,9 +146,9 @@ window.onload = function() {
     // 2. INISIALISASI FIREBASE
     try {
         if (!firebaseConfig.projectId) {
-            console.error("[FATAL ERROR] Konfigurasi Firebase tidak lengkap (Missing Project ID).");
-            if (authError) authError.textContent = 'Kesalahan Fatal: Konfigurasi Firebase tidak lengkap. Cek Konsol (F12).';
-            return;
+            console.warn("[WARNING FIREBASE] Konfigurasi Firebase terlihat tidak lengkap (Missing Project ID). Mencoba melanjutkan dengan asumsi token kustom akan berhasil.");
+            if (authError) authError.textContent = 'Peringatan: Konfigurasi Firebase kurang. Mencoba masuk secara Anonim...';
+            // TIDAK ADA 'return' di sini, agar kode mencoba auth.
         }
 
         // Inisialisasi
@@ -244,8 +244,11 @@ async function initialAuth() {
 
 // Menyiapkan Listener Otentikasi
 function setupAuthListener() {
-    if (!auth) return;
-
+    if (!auth) {
+        console.error("[AUTH ERROR] setupAuthListener dibatalkan: Objek 'auth' tidak ada.");
+        return;
+    }
+    
     auth.onAuthStateChanged((user) => {
         if (user) {
             // Pengguna berhasil login/masuk
@@ -255,7 +258,9 @@ function setupAuthListener() {
             if (authSection && mainApp) {
                 authSection.style.display = 'none';
                 mainApp.style.display = 'block';
-                userEmailSpan.textContent = user.email || currentUserId; 
+                // Jika anonim, tampilkan UID (penting untuk debugging rules)
+                userEmailSpan.textContent = user.email || `ID: ${currentUserId}`; 
+                authError.textContent = '';
             }
 
             // Setelah login, siapkan form submit dan muat data
@@ -311,6 +316,8 @@ async function handleExpenseSubmit(e) {
     const date = new Date().toISOString().split('T')[0];
     
     // Path Collection Privat
+    // PENTING: Firestore Security Rules harus mengizinkan akses ke path ini:
+    // /artifacts/{appId}/users/{userId}/expenses
     const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
     const userExpensesCollection = db.collection(collectionPath);
     console.log(`[DEBUG DATA] Mencoba menambah data ke path: ${collectionPath}`);
@@ -397,6 +404,7 @@ function loadExpenses() {
             totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
         }, error => {
             console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
+            // Ini biasanya terjadi jika ada masalah di Aturan Keamanan (Security Rules)
             authError.textContent = 'Gagal memuat data. Kemungkinan masalah Izin (Security Rules). Cek konsol.';
         });
 
