@@ -184,17 +184,8 @@ let monthlyChartCanvas, monthlyRecapDiv, statusAlertDiv;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// FIX: Pastikan konfigurasi diambil dari variabel global lingkungan.
+// Ambil konfigurasi dari variabel global lingkungan.
 let firebaseConfig = {};
-try {
-    const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-    if (configString.trim() !== '') {
-        firebaseConfig = JSON.parse(configString);
-    }
-} catch (e) {
-    console.error("[FATAL ERROR] Gagal mem-parsing __firebase_config. Konfigurasi diatur menjadi kosong.", e);
-}
-
 
 // ------------------------------------
 // THE ENTIRE APPLICATION LOGIC RUNS AFTER THE DOM IS READY
@@ -218,17 +209,26 @@ window.onload = async function() {
     statusAlertDiv = document.getElementById('status-alert');
 
 
-    // 2. FIREBASE INITIALIZATION
+    // 2. ROBUST FIREBASE CONFIGURATION CHECK AND INITIALIZATION
     try {
         if (!window.firebaseModular) {
             throw new Error("Impor modular Firebase gagal. Pastikan CDN link diakses dengan benar.");
         }
         
-        // Cek proyek ID sebagai indikasi konfigurasi valid
+        // Coba parsing konfigurasi yang disuntikkan secara global
+        const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+        if (configString.trim() !== '') {
+            firebaseConfig = JSON.parse(configString);
+        }
+
+        // VALIDASI KRITIS: Cek Project ID
         if (!firebaseConfig.projectId) {
-            console.warn("[WARN] Project ID belum ditemukan. Mungkin sedang menunggu injeksi variabel lingkungan.");
+            console.error("[FATAL ERROR - CONFIG] Konfigurasi yang diparsing:", firebaseConfig);
+            throw new Error(`"projectId" not provided in firebase.initializeApp. Ini menunjukkan kegagalan dalam pengambilan konfigurasi global '__firebase_config'.`);
         }
         
+        console.log("[DEBUG CONFIG] Konfigurasi Firebase berhasil dimuat untuk Project ID:", firebaseConfig.projectId);
+
         // Inisialisasi Aplikasi Firebase
         app = window.firebaseModular.initializeApp(firebaseConfig);
         db = window.firebaseModular.getFirestore(app);
@@ -236,7 +236,7 @@ window.onload = async function() {
         window.firebaseModular.setLogLevel('debug');
         isFirebaseInitialized = true;
 
-        // Inisialisasi Otentikasi (memulai proses sign-in asinkron)
+        // Inisialisasi Otentikasi
         await initializeAuth(); 
         
     } catch (e) {
@@ -257,21 +257,26 @@ window.onload = async function() {
  * Digunakan untuk menangani __initial_auth_token
  */
 async function initializeAuth() {
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    try {
-        if (!auth) {
-            throw new Error("Objek Auth belum tersedia.");
-        }
+    if (!auth) {
+        // Objek auth harus ada jika isFirebaseInitialized true, tapi sebagai pengaman:
+        console.error("[DEBUG AUTH] initializeAuth dipanggil tetapi objek auth belum siap.");
+        return;
+    }
 
+    const initialAuthToken = typeof __initial_token !== 'undefined' ? __initial_token : null; 
+    
+    try {
         if (auth.currentUser) {
-            console.log("[DEBUG AUTH] Pengguna sudah terautentikasi (berhasil dari initializeAuth sebelumnya).");
+            console.log("[DEBUG AUTH] Pengguna sudah terautentikasi.");
             return;
         }
 
         if (initialAuthToken) {
+            // FIX: Gunakan __initial_token jika ada
             await window.firebaseModular.signInWithCustomToken(auth, initialAuthToken);
             console.log("[DEBUG AUTH] Custom Token Sign-in berhasil.");
         } else {
+            // Gunakan Anonymous sign-in jika token tidak ada
             await window.firebaseModular.signInAnonymously(auth);
             console.log("[DEBUG AUTH] Anonymous Sign-in berhasil.");
         }
@@ -323,10 +328,7 @@ async function startAppAsUser() {
     sessionStorage.setItem('currentUserName', name);
     authError.textContent = '';
     
-    // FIX UTAMA untuk error currentUser: 
-    // Pastikan proses sign-in sudah berjalan atau jalankan kembali.
-    // Kemudian tunggu onAuthStateChanged untuk memicu handleAuthSuccess.
-    
+    // Pastikan Auth tersedia
     if (!auth || !isFirebaseInitialized) {
         authError.textContent = 'Layanan Firebase belum siap. Tunggu sebentar atau refresh.';
         return console.error("[DEBUG AUTH] Tombol diklik saat Firebase belum siap.");
@@ -337,7 +339,6 @@ async function startAppAsUser() {
         handleAuthSuccess(auth.currentUser);
     } else {
         // Jika belum selesai (race condition), coba panggil initializeAuth lagi
-        // dan tampilkan pesan loading. onAuthStateChanged akan menangani sisanya.
         await initializeAuth(); 
         console.log("[DEBUG AUTH] Auth sedang dalam proses. Menunggu onAuthStateChanged...");
         statusAlertDiv.classList.remove('hidden');
@@ -486,6 +487,7 @@ async function handleExpenseSubmit(e) {
     };
 
     if (amount > 0 && category && description) {
+        // Path collection: /artifacts/{appId}/users/{userId}/expenses
         const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
         try {
             await window.firebaseModular.addDoc(collectionRef, newExpense); 
@@ -508,6 +510,7 @@ function loadExpenses() {
         return console.log("[DEBUG DATA] loadExpenses dihentikan. Prasyarat tidak terpenuhi.");
     }
     
+    // Path collection: /artifacts/{appId}/users/{userId}/expenses
     const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
     const q = window.firebaseModular.query(collectionRef, window.firebaseModular.orderBy('timestamp', 'desc'));
     
@@ -836,6 +839,7 @@ function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
     window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
         if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
+        // Path document: /artifacts/{appId}/users/{userId}/expenses/{docId}
         const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
         
         const updatePayload = {
@@ -868,6 +872,7 @@ function handleDeleteClick(docId) {
     window.manualDelete = async (id) => {
         if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
+        // Path document: /artifacts/{appId}/users/{userId}/expenses/{docId}
         const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
         
         try {
