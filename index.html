@@ -12,13 +12,50 @@
     </style>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> ```
 </head>
 <body>
 
+<h1>💰 Catat Pengeluaran</h1>
+
+    <div id="auth-section">
+        <h2>Akses Aplikasi</h2>
+        <input type="email" id="auth-email" placeholder="Email" required>
+        <input type="password" id="auth-password" placeholder="Kata Sandi" required>
+        <button onclick="signUp()">Daftar</button>
+        <button onclick="signIn()">Masuk</button>
+        <div id="auth-error" style="color: red; margin-top: 10px;"></div>
+    </div>
+    
+    <div id="main-app" style="display: none;">
+        <button onclick="signOut()" style="float: right;">Keluar</button>
+        <h3>Halo, <span id="user-email">Pengguna</span>!</h3>
+        
+        <form id="expense-form">
+            </form>
+        
+        <hr>
+        
+        <h2>📊 Ringkasan Hari Ini</h2>
+        <p>Total Pengeluaran: <span id="total-amount">Rp 0</span></p>
+
+        <hr>
+        
+        <h2>📜 Riwayat Transaksi</h2>
+        <div id="expense-list">
+            </div>
+    </div>
     <h1>💰 Catat Pengeluaran</h1>
 
     <form id="expense-form">
         <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required>
+<input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required>
+
+<input type="text" id="description" placeholder="Deskripsi (contoh: Kopi dan Roti)" required> 
+<select id="category" required>
+</select>
         <select id="category" required>
             <option value="" disabled selected>Pilih Kategori</option>
             <option value="Makanan">Makanan</option>
