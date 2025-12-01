@@ -4,89 +4,82 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplikasi Pengeluaran Mudah</title>
+    <!-- Memuat Tailwind CSS untuk styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background-color: #f4f4f9; color: #333;}
-        h1, h2, h3 { color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 5px; }
-        
-        /* Gaya Formulir & Button */
-        #expense-form input, #expense-form select, #expense-form button, 
-        #auth-section input, #auth-section button { 
-            margin-bottom: 10px; 
-            padding: 12px; 
-            width: 100%; 
-            box-sizing: border-box; 
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 16px;
-        }
-        button {
-            cursor: pointer;
-            background-color: #007bff;
-            color: white;
-            transition: background-color 0.3s;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
+        /* Gaya Kustom untuk Keindahan dan Responsivitas */
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+        .container { max-width: 600px; margin: 20px auto; padding: 20px; }
+        h1 { color: #1e3a8a; border-bottom: 2px solid #bfdbfe; padding-bottom: 5px; }
         
         /* Gaya Item Pengeluaran */
         .expense-item { 
-            border-bottom: 1px solid #ddd; 
-            padding: 15px 0; 
+            border-bottom: 1px solid #e5e7eb; 
+            padding: 1rem 0; 
             display: flex; 
             justify-content: space-between; 
             align-items: center;
         }
         .amount { 
             font-weight: bold; 
-            color: #d9534f; /* Warna merah untuk pengeluaran */
+            color: #ef4444; /* Warna merah untuk pengeluaran */
             font-size: 1.1em;
+            text-align: right;
         }
-        
-        /* Gaya Section Auth */
-        #auth-section, #main-app {
+        .auth-card, .app-card {
             background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
-
+        /* Mengatasi batasan penggunaan alert/confirm */
+        .info-message {
+            background-color: #fef3c7;
+            color: #92400e;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border: 1px solid #fde68a;
+        }
     </style>
     
-    <!-- 1. SDK Firebase: URUTAN PEMUATAN SUDAH BENAR -->
+    <!-- SDK Firebase Kompatibilitas Layer (Digunakan oleh logika script Anda) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
 
-    <!-- script.js dimuat di akhir BODY untuk memastikan semua elemen HTML sudah tersedia -->
 </head>
-<body>
+<body class="bg-gray-50 p-4">
 
-<!-- JUDUL UTAMA APLIKASI -->
-<h1>💰 Catat Pengeluaran Harian</h1>
+<div class="container">
+    <h1 class="text-3xl font-bold mb-6 text-center">💰 Catat Pengeluaran Harian</h1>
 
     <!-- BAGIAN 1: OTENTIKASI (LOGIN/DAFTAR) -->
-    <div id="auth-section">
-        <h2>Akses Aplikasi</h2>
-        <input type="email" id="auth-email" placeholder="Email" required>
-        <input type="password" id="auth-password" placeholder="Kata Sandi" required>
-        <button onclick="signUp()">Daftar</button>
-        <button onclick="signIn()">Masuk</button>
-        <div id="auth-error" style="color: red; margin-top: 10px;"></div>
+    <div id="auth-section" class="auth-card">
+        <h2 class="text-xl font-semibold mb-4 text-blue-700">Akses Aplikasi</h2>
+        <input type="email" id="auth-email" placeholder="Email" required class="w-full p-3 mb-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+        <input type="password" id="auth-password" placeholder="Kata Sandi" required class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+        <div class="flex space-x-2">
+            <button onclick="signUp()" class="flex-1 p-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition duration-150">Daftar</button>
+            <button onclick="signIn()" class="flex-1 p-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150">Masuk</button>
+        </div>
+        <div id="auth-error" class="mt-4 text-red-600 text-sm font-medium"></div>
     </div>
     
     <!-- BAGIAN 2: APLIKASI UTAMA (TIDAK TERLIHAT SEBELUM LOGIN) -->
-    <div id="main-app" style="display: none;">
-        <button onclick="signOut()" style="float: right; padding: 5px 10px; font-size: 14px; background-color: #f0ad4e;">Keluar</button>
-        <h3>Halo, <span id="user-email">Pengguna</span>!</h3>
+    <div id="main-app" class="app-card" style="display: none;">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-700">Halo, <span id="user-email" class="font-bold text-blue-700">Pengguna</span>!</h3>
+            <button onclick="signOut()" class="p-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold text-sm rounded-lg transition duration-150">Keluar</button>
+        </div>
         
         <!-- Formulir Pengeluaran -->
-        <h2>📝 Catat Pengeluaran</h2>
-        <form id="expense-form">
-            <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required>
-            <input type="text" id="description" placeholder="Deskripsi (contoh: Kopi dan Roti)" required>
-            <select id="category" required>
+        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📝 Catat Pengeluaran</h2>
+        <form id="expense-form" class="space-y-3">
+            <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required class="w-full p-3 border border-gray-300 rounded-lg">
+            <input type="text" id="description" placeholder="Deskripsi (contoh: Kopi dan Roti)" required class="w-full p-3 border border-gray-300 rounded-lg">
+            <select id="category" required class="w-full p-3 border border-gray-300 rounded-lg bg-white">
                 <option value="" disabled selected>Pilih Kategori</option>
                 <option value="Makanan">Makanan</option>
                 <option value="Transportasi">Transportasi</option>
@@ -94,25 +87,336 @@
                 <option value="Hiburan">Hiburan</option>
                 <option value="Lainnya">Lainnya</option>
             </select>
-            <button type="submit">Tambah Pengeluaran</button>
+            <button type="submit" class="w-full p-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition duration-150">Tambah Pengeluaran</button>
         </form>
         
-        <hr>
+        <hr class="my-6">
         
         <!-- Ringkasan -->
-        <h2>📊 Ringkasan Total</h2>
-        <p>Total Pengeluaran: <span id="total-amount" style="color: #d9534f;">Rp 0</span></p>
+        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📊 Ringkasan Total</h2>
+        <p class="text-gray-700 text-lg">Total Pengeluaran: <span id="total-amount" class="font-bold text-red-600 ml-2">Rp 0</span></p>
 
-        <hr>
+        <hr class="my-6">
         
         <!-- Riwayat Transaksi -->
-        <h2>📜 Riwayat Transaksi</h2>
-        <div id="expense-list">
+        <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">📜 Riwayat Transaksi</h2>
+        <div class="info-message">
+            Untuk **Edit** atau **Hapus**, tombol akan menampilkan instruksi di *Console* (F12) karena batasan keamanan di lingkungan ini. Anda perlu mengetik perintah `manualEdit()` atau `manualDelete()` di sana.
+        </div>
+        <div id="expense-list" class="mt-4">
             <!-- Data akan dimuat di sini oleh script.js -->
         </div>
     </div>
+</div>
     
-    <!-- SCRIPT.JS DIMUAT DI AKHIR UNTUK MEMASTIKAN SEMUA ID DITEMUKAN -->
-    <script src="script.js"></script>
+<script>
+// ------------------------------------
+// BAGIAN 1: KONFIGURASI DAN INISIALISASI FIREBASE (DISESUAIKAN UNTUK CANVAS)
+// ------------------------------------
+// Menggunakan variabel global Canvas untuk konfigurasi dan otentikasi
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+// Inisialisasi Firebase
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.firestore();
+const auth = firebase.auth(); 
+
+let currentUserId = null; // Variabel global untuk ID pengguna yang sedang login
+
+// ------------------------------------
+// BAGIAN 2: DEKLARASI VARIABEL DOM 
+// ------------------------------------
+// A. Otentikasi
+const emailInput = document.getElementById('auth-email');
+const passwordInput = document.getElementById('auth-password');
+const authError = document.getElementById('auth-error');
+
+// B. Tampilan Utama
+const authSection = document.getElementById('auth-section');
+const mainApp = document.getElementById('main-app');
+const userEmailSpan = document.getElementById('user-email');
+
+// C. Formulir Pengeluaran
+const expenseForm = document.getElementById('expense-form');
+const amountInput = document.getElementById('amount');
+const descriptionInput = document.getElementById('description');
+const categoryInput = document.getElementById('category');
+const expenseList = document.getElementById('expense-list');
+const totalAmountSpan = document.getElementById('total-amount');
+
+// ------------------------------------
+// BAGIAN 3: FUNGSI OTENTIKASI (SIGN UP, SIGN IN, SIGN OUT)
+// ------------------------------------
+
+async function signUp() {
+    if (!emailInput || !passwordInput) {
+        console.error("Elemen input otentikasi tidak ditemukan.");
+        return;
+    }
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    authError.textContent = '';
+
+    try {
+        await auth.createUserWithEmailAndPassword(email, password);
+    } catch (error) {
+        authError.textContent = 'Gagal Daftar: ' + error.message;
+    }
+}
+
+async function signIn() {
+    if (!emailInput || !passwordInput) {
+        console.error("Elemen input otentikasi tidak ditemukan.");
+        return;
+    }
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    authError.textContent = '';
+
+    try {
+        await auth.signInWithEmailAndPassword(email, password);
+    } catch (error) {
+        authError.textContent = 'Gagal Masuk: ' + error.message;
+    }
+}
+
+function signOut() {
+    auth.signOut();
+}
+
+// Menghubungkan fungsi ke window agar dapat dipanggil dari onclick di HTML
+window.signUp = signUp;
+window.signIn = signIn;
+window.signOut = signOut;
+
+// ------------------------------------
+// BAGIAN 4: LISTENER PERUBAHAN STATUS OTENTIKASI (PENGONTROL TAMPILAN & INITIAL AUTH)
+// ------------------------------------
+
+// Fungsi untuk menangani otentikasi awal (custom token atau anonim)
+async function initialAuth() {
+    if (typeof __initial_auth_token !== 'undefined') {
+        try {
+            await auth.signInWithCustomToken(__initial_auth_token);
+        } catch (error) {
+            console.error("Custom token sign-in failed, falling back to anonymous auth:", error);
+            await auth.signInAnonymously();
+        }
+    } else {
+        await auth.signInAnonymously();
+    }
+}
+
+// Listener utama untuk perubahan status otentikasi
+auth.onAuthStateChanged((user) => {
+    if (user) {
+        // Pengguna berhasil login/masuk
+        currentUserId = user.uid;
+        authSection.style.display = 'none';
+        mainApp.style.display = 'block';
+        userEmailSpan.textContent = user.email || "Pengguna Anonim"; // Tampilkan email atau status anonim
+
+        // Muat data khusus pengguna ini
+        loadExpenses();
+
+    } else {
+        // Pengguna logout atau belum login
+        currentUserId = null;
+        authSection.style.display = 'block';
+        mainApp.style.display = 'none';
+
+        // Bersihkan tampilan saat logout
+        if (expenseList && totalAmountSpan) {
+            expenseList.innerHTML = '';
+            totalAmountSpan.textContent = `Rp 0`;
+        }
+        
+        // Coba otentikasi awal saat pertama kali dimuat atau setelah logout
+        initialAuth(); 
+    }
+});
+
+
+// ------------------------------------
+// BAGIAN 5: FUNGSI PENGELUARAN (CRUD)
+// ------------------------------------
+
+// Fungsi 5A: CREATE (Menambahkan Pengeluaran)
+if (expenseForm) {
+    expenseForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        if (!currentUserId) {
+            console.log("Peringatan: Silakan masuk (login) terlebih dahulu!");
+            return;
+        }
+
+        const amount = parseInt(amountInput.value);
+        const category = categoryInput.value;
+        const description = descriptionInput.value;
+        const date = new Date().toISOString().split('T')[0];
+        
+        // Path Collection Privat
+        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        const userExpensesCollection = db.collection(collectionPath);
+
+
+        if (amount > 0 && category && description) {
+            try {
+                await userExpensesCollection.add({
+                    amount: amount,
+                    category: category,
+                    description: description,
+                    date: date,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    userId: currentUserId // Simpan ID pengguna
+                });
+                // Reset form
+                amountInput.value = '';
+                descriptionInput.value = '';
+                categoryInput.value = '';
+            } catch (error) {
+                console.error("Error saat menambahkan dokumen: ", error);
+                console.log("Gagal menambahkan transaksi. Lihat konsol untuk detail.");
+            }
+        } else {
+            console.log("Peringatan: Pastikan jumlah, kategori, dan deskripsi terisi.");
+        }
+    });
+
+}
+
+// Fungsi 5B: READ (Memuat dan Menampilkan Pengeluaran)
+function loadExpenses() {
+    if (!currentUserId || !expenseList || !totalAmountSpan) return;
+    
+    // Path Collection Privat
+    const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+    const userExpensesCollection = db.collection(collectionPath);
+
+
+    // Filter data berdasarkan userId pengguna yang login
+    userExpensesCollection
+        .orderBy('timestamp', 'desc')
+        .onSnapshot(snapshot => {
+            expenseList.innerHTML = '';
+            let total = 0;
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const itemAmount = typeof data.amount === 'number' ? data.amount : 0;
+                total += itemAmount;
+
+                const docId = doc.id; 
+                
+                const item = document.createElement('div');
+                item.className = 'expense-item';
+                
+                // Struktur HTML item pengeluaran
+                item.innerHTML = `
+                    <div style="flex-grow: 1;">
+                        <strong class="text-gray-900">${data.description}</strong> 
+                        <span class="text-sm text-gray-500">(${data.category}) - ${data.date}</span>
+                    </div>
+                    <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
+                    <div class="flex space-x-2">
+                        <!-- Tombol Edit -->
+                        <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${data.category}', '${data.description}')" 
+                                class="p-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition duration-150">
+                            Edit
+                        </button>
+                        
+                        <!-- Tombol Hapus -->
+                        <button onclick="window.handleDeleteClick('${docId}')" 
+                                class="p-2 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition duration-150">
+                            Hapus
+                        </button>
+                    </div>
+                `;
+                
+                expenseList.appendChild(item);
+            });
+            
+            totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
+        }, error => {
+            console.error("Error saat membaca data: ", error);
+        });
+
+}
+
+// ------------------------------------
+// FUNGSI PENGGANTI PROMPT/CONFIRM (Untuk Lingkungan Canvas)
+// ------------------------------------
+
+// Fungsi 5C: UPDATE (Mengedit Pengeluaran) - Diubah untuk konsol
+function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
+    // Di lingkungan Canvas, kita tidak dapat menggunakan prompt.
+    // Sebagai gantinya, log data ke konsol dan beri tahu pengguna untuk memanggil fungsi update manual.
+    console.log("--- EDIT TRANSAKSI ---");
+    console.log(`ID Dokumen: ${docId}`);
+    console.log(`Data Lama: Jumlah: ${oldAmount}, Kategori: ${oldCategory}, Deskripsi: ${oldDescription}`);
+    console.log("Silakan panggil fungsi 'manualEdit' di konsol untuk mengupdate:");
+    console.log(`Contoh: manualEdit('${docId}', 50000, 'Baru', 'Deskripsi Baru')`);
+
+    // Fungsi bantuan manual untuk debugging/pengujian
+    window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
+        if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
+        
+        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        const expenseDocRef = db.collection(collectionPath).doc(id);
+
+        if (newAmount && newCategory && newDescription) {
+            try {
+                await expenseDocRef.update({
+                    amount: parseInt(newAmount), 
+                    description: newDescription,
+                    category: newCategory
+                });
+                console.log(`[SUKSES] Transaksi ${id} berhasil diupdate.`);
+            } catch (error) {
+                console.error("[Gagal] Error saat mengupdate dokumen: ", error);
+            }
+        } else {
+            console.error("[Gagal] Semua kolom (jumlah, kategori, deskripsi) harus diisi!");
+        }
+    };
+
+}
+
+// Fungsi 5D: DELETE (Menghapus Pengeluaran) - Diubah untuk konsol
+function handleDeleteClick(docId) {
+    // Di lingkungan Canvas, kita tidak dapat menggunakan confirm.
+    // Sebagai gantinya, log data ke konsol dan berikan instruksi.
+    console.log("--- HAPUS TRANSAKSI ---");
+    console.log(`ID Dokumen: ${docId}`);
+    console.log("Untuk menghapus, silakan panggil fungsi 'manualDelete' di konsol:");
+    console.log(`Contoh: manualDelete('${docId}')`);
+
+    // Fungsi bantuan manual untuk debugging/pengujian
+    window.manualDelete = async (id) => {
+        if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
+        
+        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        const expenseDocRef = db.collection(collectionPath).doc(id);
+
+        try {
+            await expenseDocRef.delete();
+            console.log(`[SUKSES] Transaksi ${id} berhasil dihapus.`);
+        } catch (error) {
+            console.error("[Gagal] Error saat menghapus dokumen: ", error);
+        }
+    };
+}
+
+// Membuat fungsi handler baru tersedia secara global
+window.handleEditClick = handleEditClick;
+window.handleDeleteClick = handleDeleteClick;
+
+// Panggil otentikasi awal saat skrip dimuat (ini akan memicu onAuthStateChanged)
+// Catatan: onAuthStateChanged akan dipanggil segera setelah skrip selesai dimuat.
+</script>
 </body>
 </html>
