@@ -43,6 +43,9 @@ const categoryInput = document.getElementById('category');
 const expenseList = document.getElementById('expense-list');
 const totalAmountSpan = document.getElementById('total-amount');
 
+// Catatan: Tombol otentikasi sekarang hanya menggunakan onclick di HTML,
+// jadi kita tidak perlu mengambil referensinya di sini.
+
 // ------------------------------------
 // BAGIAN 3: FUNGSI OTENTIKASI (SIGN UP, SIGN IN, SIGN OUT)
 // ------------------------------------
@@ -104,8 +107,7 @@ mainApp.style.display = 'block';
 userEmailSpan.textContent = user.email;
 
 // Muat data khusus pengguna ini
-loadExpenses(); 
-
+loadExpenses();
 
 } else {
 // Pengguna logout atau belum login
@@ -115,10 +117,9 @@ mainApp.style.display = 'none';
 
 // Bersihkan tampilan saat logout
 if (expenseList && totalAmountSpan) {
-    expenseList.innerHTML = ''; 
-    totalAmountSpan.textContent = `Rp 0`; 
+expenseList.innerHTML = '';
+totalAmountSpan.textContent = Rp 0;
 }
-
 
 }
 
@@ -134,40 +135,39 @@ expenseForm.addEventListener('submit', async (e) => {
 e.preventDefault();
 
 if (!currentUserId) {
-    // Mengganti alert() dengan console.log()
-    console.log("Peringatan: Silakan masuk (login) terlebih dahulu!");
-    return;
+// Mengganti alert() dengan console.log()
+console.log("Peringatan: Silakan masuk (login) terlebih dahulu!");
+return;
 }
 
 const amount = parseInt(amountInput.value);
 const category = categoryInput.value;
-const description = descriptionInput.value; 
+const description = descriptionInput.value;
 const date = new Date().toISOString().split('T')[0];
 
 if (amount > 0 && category && description) {
-    try {
-        await expensesCollection.add({
-            amount: amount,
-            category: category,
-            description: description,
-            date: date,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            userId: currentUserId // Simpan ID pengguna
-        });
-        // Reset form
-        amountInput.value = '';
-        descriptionInput.value = '';
-        categoryInput.value = '';
-    } catch (error) {
-        console.error("Error saat menambahkan dokumen: ", error);
-        // Mengganti alert() dengan console.log()
-        console.log("Gagal menambahkan transaksi. Lihat konsol untuk detail.");
-    }
-} else {
-     // Mengganti alert() dengan console.log()
-     console.log("Peringatan: Pastikan jumlah, kategori, dan deskripsi terisi.");
+try {
+await expensesCollection.add({
+amount: amount,
+category: category,
+description: description,
+date: date,
+timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+userId: currentUserId // Simpan ID pengguna
+});
+// Reset form
+amountInput.value = '';
+descriptionInput.value = '';
+categoryInput.value = '';
+} catch (error) {
+console.error("Error saat menambahkan dokumen: ", error);
+// Mengganti alert() dengan console.log()
+console.log("Gagal menambahkan transaksi. Lihat konsol untuk detail.");
 }
-
+} else {
+// Mengganti alert() dengan console.log()
+console.log("Peringatan: Pastikan jumlah, kategori, dan deskripsi terisi.");
+}
 
 });
 
@@ -185,45 +185,46 @@ expensesCollection
 expenseList.innerHTML = '';
 let total = 0;
 
-    snapshot.forEach(doc => {
-        const data = doc.data();
-        const itemAmount = typeof data.amount === 'number' ? data.amount : 0;
-        total += itemAmount;
+snapshot.forEach(doc => {
+    const data = doc.data();
+    const itemAmount = typeof data.amount === 'number' ? data.amount : 0;
+    total += itemAmount;
 
-        const docId = doc.id; 
-        
-        const item = document.createElement('div');
-        item.className = 'expense-item';
-        
-        // Struktur HTML item pengeluaran
-        item.innerHTML = `
-            <div style="flex-grow: 1;">
-                <strong>${data.description}</strong> (${data.category}) - ${data.date} 
-            </div>
-            <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
-            <div style="display: flex; gap: 8px;">
-                <!-- Tombol Edit -->
-                <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${data.category}', '${data.description}')" 
-                        style="background: #007bff; color: white; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px;">
-                    Edit
-                </button>
-                
-                <!-- Tombol Hapus -->
-                <button onclick="window.handleDeleteClick('${docId}')" 
-                        style="background: #f44336; color: white; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px;">
-                    Hapus
-                </button>
-            </div>
-        `;
-        
-        expenseList.appendChild(item);
-    });
+    const docId = doc.id; 
     
-    totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
-}, error => {
-    console.error("Error saat membaca data: ", error);
+    const item = document.createElement('div');
+    item.className = 'expense-item';
+    
+    // Struktur HTML item pengeluaran
+    item.innerHTML = `
+        <div style="flex-grow: 1;">
+            <strong>${data.description}</strong> (${data.category}) - ${data.date} 
+        </div>
+        <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
+        <div style="display: flex; gap: 8px;">
+            <!-- Tombol Edit -->
+            <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${data.category}', '${data.description}')" 
+                    style="background: #007bff; color: white; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px;">
+                Edit
+            </button>
+            
+            <!-- Tombol Hapus -->
+            <button onclick="window.handleDeleteClick('${docId}')" 
+                    style="background: #f44336; color: white; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px;">
+                Hapus
+            </button>
+        </div>
+    `;
+    
+    expenseList.appendChild(item);
 });
 
+totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
+
+
+}, error => {
+console.error("Error saat membaca data: ", error);
+});
 
 }
 
@@ -243,22 +244,21 @@ console.log(Contoh: manualEdit('${docId}', 50000, 'Baru', 'Deskripsi Baru'));
 
 // Fungsi bantuan manual untuk debugging/pengujian
 window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
-    if (newAmount && newCategory && newDescription) {
-        try {
-            await expensesCollection.doc(id).update({
-                amount: parseInt(newAmount), 
-                description: newDescription,
-                category: newCategory
-            });
-            console.log(`[SUKSES] Transaksi ${id} berhasil diupdate.`);
-        } catch (error) {
-            console.error("[Gagal] Error saat mengupdate dokumen: ", error);
-        }
-    } else {
-        console.error("[Gagal] Semua kolom (jumlah, kategori, deskripsi) harus diisi!");
-    }
+if (newAmount && newCategory && newDescription) {
+try {
+await expensesCollection.doc(id).update({
+amount: parseInt(newAmount),
+description: newDescription,
+category: newCategory
+});
+console.log([SUKSES] Transaksi ${id} berhasil diupdate.);
+} catch (error) {
+console.error("[Gagal] Error saat mengupdate dokumen: ", error);
+}
+} else {
+console.error("[Gagal] Semua kolom (jumlah, kategori, deskripsi) harus diisi!");
+}
 };
-
 
 }
 
@@ -273,57 +273,15 @@ console.log(Contoh: manualDelete('${docId}'));
 
 // Fungsi bantuan manual untuk debugging/pengujian
 window.manualDelete = async (id) => {
-    try {
-        await expensesCollection.doc(id).delete();
-        console.log(`[SUKSES] Transaksi ${id} berhasil dihapus.`);
-    } catch (error) {
-        console.error("[Gagal] Error saat menghapus dokumen: ", error);
-    }
+try {
+await expensesCollection.doc(id).delete();
+console.log([SUKSES] Transaksi ${id} berhasil dihapus.);
+} catch (error) {
+console.error("[Gagal] Error saat menghapus dokumen: ", error);
+}
 };
 
-
 }
-
-// Fungsi Lama (Dipertahankan sebagai fallback/referensi)
-/*
-function editExpense(docId, oldAmount, oldCategory, oldDescription) {
-const newAmount = prompt(Edit Jumlah (Lama: ${oldAmount}):, oldAmount);
-if (newAmount === null) return;
-const newDescription = prompt(Edit Deskripsi (Lama: ${oldDescription}):, oldDescription);
-if (newDescription === null) return;
-const newCategory = prompt(Edit Kategori (Lama: ${oldCategory}):, oldCategory);
-if (newCategory === null) return;
-if (newAmount && newDescription && newCategory) {
-if (confirm("Yakin ingin mengubah transaksi ini?")) {
-(async () => {
-try {
-await expensesCollection.doc(docId).update({
-amount: parseInt(newAmount),
-description: newDescription,
-category: newCategory
-});
-} catch (error) {
-console.error("Error saat mengupdate dokumen: ", error);
-alert("Gagal mengupdate transaksi.");
-}
-})();
-}
-} else {
-alert("Semua kolom harus diisi!");
-}
-}
-
-async function deleteExpense(docId) {
-if (confirm("Apakah Anda yakin ingin menghapus transaksi ini?")) {
-try {
-await expensesCollection.doc(docId).delete();
-} catch (error) {
-console.error("Error saat menghapus dokumen: ", error);
-alert("Gagal menghapus transaksi.");
-}
-}
-}
-*/
 
 // Membuat fungsi handler baru tersedia secara global
 window.handleEditClick = handleEditClick;
