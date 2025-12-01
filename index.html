@@ -9,6 +9,8 @@
         Untuk lingkungan produksi, disarankan menggunakan instalasi penuh Tailwind.
     -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tambahkan Chart.js untuk Visualisasi Data -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script> 
     <style>
         /* Gaya Kustom untuk Keindahan dan Responsivitas */
         body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
@@ -102,6 +104,22 @@
         <p class="text-gray-700 text-lg">Total Pengeluaran: <span id="total-amount" class="font-bold text-red-600 ml-2">Rp 0</span></p>
 
         <hr class="my-6">
+
+        <!-- Bagian Rekap Bulanan dan Chart -->
+        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📈 Grafik Pengeluaran Bulanan</h2>
+        <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <canvas id="monthlyChart"></canvas>
+        </div>
+
+        <hr class="my-6">
+        
+        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📅 Rekap Pengeluaran per Bulan</h2>
+        <div id="monthly-recap" class="mt-4">
+            <!-- Tabel rekap bulanan akan dimuat di sini -->
+            <p class="text-gray-500">Memuat data rekap...</p>
+        </div>
+        
+        <hr class="my-6">
         
         <!-- Riwayat Transaksi -->
         <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">📜 Riwayat Transaksi</h2>
@@ -122,11 +140,13 @@ let db = null;
 let auth = null;
 let currentUserId = null;
 let currentUserName = null; // Menyimpan nama pengguna
-let expenseListeners = []; // Untuk melacak mock listeners
-let expenseData = {}; // Simpan data mock di memori
+
+// Variabel baru untuk Chart dan Recap
+let chartInstance = null; // Untuk menyimpan instance Chart.js
 
 let userNameInput, startButton, authError, authSection, mainApp, userDisplayNameSpan;
 let expenseForm, amountInput, descriptionInput, categoryInput, expenseList, totalAmountSpan;
+let monthlyChartCanvas, monthlyRecapDiv;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
@@ -159,155 +179,28 @@ window.onload = function() {
     categoryInput = document.getElementById('category');
     expenseList = document.getElementById('expense-list');
     totalAmountSpan = document.getElementById('total-amount');
-
-    // 2. INISIALISASI FIREBASE (BLOK TAHAN BANTING)
-    try {
-        if (!firebaseConfig.projectId) {
-            console.warn("[WARNING FIREBASE] Konfigurasi Firebase (Project ID) TIDAK ADA. Mencoba inisialisasi normal (ini mungkin akan gagal).");
-        }
-
-        // Inisialisasi Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        
-        db = firebase.firestore();
-        auth = firebase.auth();
-        
-        firebase.firestore.setLogLevel('debug');
-        console.log("[DEBUG FIREBASE] Firebase berhasil diinisialisasi dan objek db/auth tersedia.");
-        
-        // 3. START LISTENERS DAN AUTHENTIKASI
-        setupAuthListener();
-        
-    } catch (e) {
-        // FATAL CRASH: Config failed. Masuk ke Mode Simulasi.
-        console.error("[FATAL ERROR] Gagal menginisialisasi Firebase. Beralih ke MODE SIMULASI LOKAL:", e.message || e);
-        
-        // Tentukan ID Mock
-        const mockUid = typeof __initial_auth_token !== 'undefined' ? 
-                        'mock-' + String(__initial_auth_token).slice(0, 10) : 
-                        'mock-anon-user';
-        
-        // ---------------------------------
-        // MOCK FIREBASE OBJECTS DEFINITION
-        // ---------------------------------
-        const mockAuthUser = { uid: mockUid, email: 'simulasi@local.app' };
-
-        // --- MOCK FIREBASE AUTH ---
-        auth = {
-            currentUser: mockAuthUser,
-            onAuthStateChanged: (callback) => {
-                // Simulasikan login berhasil setelah sedikit jeda
-                setTimeout(() => callback(mockAuthUser), 10);
-                return () => {}; // Mock unsubscribe
-            },
-            signInAnonymously: () => {
-                console.log("[SIMULASI AUTH] Anonim sign-in diabaikan, menggunakan mock user.");
-                return Promise.resolve();
-            },
-            signOut: () => {
-                // Simulasikan logout dengan memanggil listener dengan null
-                if (auth.listener) auth.listener(null);
-                console.log("[SIMULASI AUTH] Sign Out diabaikan.");
-            },
-            // Tambahkan listener untuk signOut simulasi
-            listener: null 
-        };
-        auth.onAuthStateChanged = (callback) => {
-            auth.listener = callback;
-            setTimeout(() => callback(mockAuthUser), 10);
-            return () => { auth.listener = null; };
-        };
+    monthlyChartCanvas = document.getElementById('monthlyChart');
+    monthlyRecapDiv = document.getElementById('monthly-recap');
 
 
-        // --- MOCK FIRESTORE DB ---
-        db = {
-            collection: (path) => ({
-                add: (data) => {
-                    if (!expenseData[path]) expenseData[path] = [];
-                    const newDocId = crypto.randomUUID();
-                    const newDoc = { id: newDocId, data: { ...data, id: newDocId } };
-                    expenseData[path].push(newDoc);
-                    console.log(`[SIMULASI DB] Data ditambahkan ke ${path} (ID: ${newDocId}).`);
-                    // Setelah penambahan, panggil semua listener untuk simulasi real-time update
-                    expenseListeners.forEach(listener => listener.callback());
-                    return Promise.resolve({ id: newDocId });
-                },
-                doc: (id) => ({
-                    update: (data) => {
-                        const index = expenseData[path].findIndex(doc => doc.id === id);
-                        if (index !== -1) {
-                            expenseData[path][index].data = { ...expenseData[path][index].data, ...data };
-                            console.log(`[SIMULASI DB] Data ${id} berhasil diupdate di ${path}.`);
-                            expenseListeners.forEach(listener => listener.callback()); // Update listener
-                        }
-                        return Promise.resolve();
-                    },
-                    delete: () => {
-                        const initialLength = expenseData[path] ? expenseData[path].length : 0;
-                        if (expenseData[path]) {
-                            expenseData[path] = expenseData[path].filter(doc => doc.id !== id);
-                        }
-                        if (expenseData[path].length < initialLength) {
-                            console.log(`[SIMULASI DB] Data ${id} berhasil dihapus dari ${path}.`);
-                            expenseListeners.forEach(listener => listener.callback()); // Update listener
-                        }
-                        return Promise.resolve();
-                    }
-                }),
-                orderBy: () => db.collection(path), // Abaikan orderBy di mock
-                onSnapshot: (callback) => {
-                    const listenerId = crypto.randomUUID();
-                    
-                    const triggerCallback = () => {
-                        const sortedData = expenseData[path] ? [...expenseData[path]].sort((a, b) => {
-                            // Sort descending by timestamp mock
-                            const timeA = a.data.timestamp;
-                            const timeB = b.data.timestamp;
-                            return timeB > timeA ? 1 : (timeB < timeA ? -1 : 0);
-                        }) : [];
-                        
-                        const snapshot = {
-                            size: sortedData.length,
-                            forEach: (cb) => {
-                                sortedData.forEach(doc => {
-                                    cb({ id: doc.id, data: () => doc.data });
-                                });
-                            }
-                        };
-                        callback(snapshot);
-                    };
-
-                    expenseListeners.push({ id: listenerId, path: path, callback: triggerCallback });
-                    
-                    // Panggil segera untuk pemuatan awal
-                    triggerCallback();
-
-                    // Kembalikan fungsi unsubscribe
-                    return () => {
-                        expenseListeners = expenseListeners.filter(l => l.id !== listenerId);
-                        console.log(`[SIMULASI DB] Listener ${listenerId} di-unsubscribe.`);
-                    };
-                }
-            }),
-            firestore: { 
-                FieldValue: { 
-                    // Gunakan tanggal aktual untuk simulasi timestamp
-                    serverTimestamp: () => new Date().toISOString() 
-                } 
-            }
-        };
-
-
-        // Update UI message
-        if (authError) {
-            authError.textContent = 'APLIKASI BERJALAN DALAM MODE SIMULASI LOKAL (DB eksternal gagal diinisialisasi).';
-        }
-        
-        // Mulai rantai listener dengan objek mock
-        setupAuthListener();
+    // 2. INISIALISASI FIREBASE (MODE PERMANEN)
+    if (!firebaseConfig.projectId) {
+        console.warn("[WARNING FIREBASE] Konfigurasi Firebase (Project ID) TIDAK ADA. Aplikasi MUNGKIN gagal terhubung ke database. Cek konfigurasi.");
     }
+
+    // Inisialisasi Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    
+    db = firebase.firestore();
+    auth = firebase.auth();
+    
+    firebase.firestore.setLogLevel('debug');
+    console.log("[DEBUG FIREBASE] Firebase berhasil diinisialisasi dan objek db/auth tersedia.");
+    
+    // 3. START LISTENERS DAN AUTHENTIKASI
+    setupAuthListener();
 };
 
 
@@ -355,11 +248,15 @@ window.startAppAsUser = startAppAsUser;
 async function initialAuth() {
     if (!auth) return;
     
-    // Logika Firebase sebenarnya atau Mock
     try {
-        await auth.signInAnonymously();
+        // Selalu coba sign in anonim jika belum ada user
+        if (!auth.currentUser) {
+            await auth.signInAnonymously();
+            console.log("[DEBUG AUTH] Sign-in Anonim berhasil.");
+        }
     } catch (error) {
         console.error("Gagal melakukan sign-in Anonim:", error);
+        authError.textContent = `Gagal inisialisasi otentikasi. Cek konsol.`;
     }
 }
 
@@ -396,11 +293,6 @@ function setupAuthListener() {
                 // NAMA BELUM ADA: Tampilkan bagian input nama
                 authSection.style.display = 'block';
                 mainApp.style.display = 'none';
-                
-                // Set placeholder di mode simulasi
-                if (user.email && user.email.startsWith('simulasi@')) {
-                    userNameInput.placeholder = 'Masukkan Nama (Simulasi)';
-                }
             }
             
             authError.textContent = '';
@@ -422,6 +314,9 @@ function setupAuthListener() {
             if (expenseList && totalAmountSpan) {
                 expenseList.innerHTML = '';
                 totalAmountSpan.textContent = `Rp 0`;
+                // Bersihkan tampilan chart dan rekap
+                if (chartInstance) chartInstance.destroy();
+                if (monthlyRecapDiv) monthlyRecapDiv.innerHTML = '<p class="text-gray-500">Memuat data rekap...</p>';
             }
         }
     });
@@ -450,8 +345,10 @@ async function handleExpenseSubmit(e) {
     const amount = parseInt(amountInput.value);
     const category = categoryInput.value;
     const description = descriptionInput.value;
+    // Menggunakan format YYYY-MM-DD untuk kemudahan sorting/grouping
     const date = new Date().toISOString().split('T')[0];
     
+    // Path Koleksi Private Firestore
     const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
     const userExpensesCollection = db.collection(collectionPath);
     console.log(`[DEBUG DATA] Mencoba menambah data ke path: ${collectionPath}`);
@@ -464,9 +361,10 @@ async function handleExpenseSubmit(e) {
                 category: category,
                 description: description,
                 date: date,
-                timestamp: db.firestore.FieldValue.serverTimestamp(),
+                // Menggunakan timestamp Firestore yang asli
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(), 
                 userId: currentUserId,
-                userName: currentUserName // Simpan nama pengguna bersama transaksi
+                userName: currentUserName 
             });
             console.log("[DEBUG DATA] Transaksi berhasil ditambahkan!");
             expenseForm.reset(); 
@@ -489,18 +387,20 @@ function loadExpenses() {
     const userExpensesCollection = db.collection(collectionPath);
     console.log(`[DEBUG DATA] Menyiapkan listener data dari path: ${collectionPath}`);
 
-    // OrderBy hanya jika ini bukan mock, tetapi karena mock sekarang memiliki orderBy yang diabaikan, kita tetap bisa memanggilnya
+    // Menggunakan onSnapshot untuk pembaruan real-time
     userExpensesCollection
         .orderBy('timestamp', 'desc')
         .onSnapshot(snapshot => {
             console.log(`[DEBUG DATA] Snapshot diterima. Jumlah dokumen: ${snapshot.size}`);
             expenseList.innerHTML = '';
             let total = 0;
+            let rawData = []; // Array untuk menyimpan data mentah
 
             snapshot.forEach(doc => {
                 const data = doc.data();
                 const itemAmount = typeof data.amount === 'number' ? data.amount : 0;
                 total += itemAmount;
+                rawData.push({ ...data, id: doc.id }); // Simpan data mentah
 
                 const docId = doc.id; 
                 
@@ -533,12 +433,130 @@ function loadExpenses() {
             });
             
             totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
+
+            // Panggil fungsi baru untuk memproses dan menampilkan chart/rekap
+            renderChartsAndSummary(rawData);
+            
         }, error => {
             console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
             authError.textContent = 'Gagal memuat data. Kemungkinan masalah Izin (Security Rules). Cek konsol.';
         });
 
 }
+
+// ------------------------------------
+// BAGIAN 5: VISUALISASI DAN REKAP BULANAN
+// ------------------------------------
+
+function renderChartsAndSummary(data) {
+    if (!monthlyChartCanvas || !monthlyRecapDiv) return;
+
+    // 1. Agregasi Data per Bulan
+    const monthlySummary = data.reduce((acc, expense) => {
+        // Tanggal tersimpan sebagai 'YYYY-MM-DD'
+        const yearMonth = expense.date ? expense.date.substring(0, 7) : 'Unknown'; 
+        acc[yearMonth] = (acc[yearMonth] || 0) + expense.amount;
+        return acc;
+    }, {});
+    
+    // Konversi objek ke array terurut (berdasarkan tahun-bulan, yang terbaru di atas)
+    const sortedMonths = Object.keys(monthlySummary).sort().reverse();
+    
+    const chartLabels = [];
+    const chartData = [];
+    
+    // Siapkan HTML untuk tabel rekap
+    let recapHTML = `
+        <div class="overflow-x-auto rounded-lg shadow-md">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-blue-100">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-blue-800 uppercase tracking-wider">Bulan</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-blue-800 uppercase tracking-wider">Total Pengeluaran</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+    `;
+
+    if (sortedMonths.length === 0) {
+        recapHTML += `
+            <tr>
+                <td colspan="2" class="px-6 py-4 text-center text-sm text-gray-500">Belum ada data pengeluaran.</td>
+            </tr>
+        `;
+    }
+    
+    sortedMonths.forEach(ym => {
+        const amount = monthlySummary[ym];
+        // Format bulan: cth. "Desember 2025"
+        const displayMonth = new Date(ym + '-01').toLocaleString('id-ID', { year: 'numeric', month: 'long' });
+        
+        // Data untuk Chart (urutannya perlu dibalik untuk chart yang logis/dari waktu ke waktu)
+        chartLabels.unshift(displayMonth);
+        chartData.unshift(amount);
+        
+        // Data untuk Tabel Recap
+        recapHTML += `
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${displayMonth}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-bold">Rp ${amount.toLocaleString('id-ID')}</td>
+            </tr>
+        `;
+    });
+    
+    recapHTML += `</tbody></table></div>`;
+    monthlyRecapDiv.innerHTML = recapHTML;
+
+
+    // 2. Render Chart
+    if (chartInstance) {
+        chartInstance.destroy(); // Hancurkan instance lama sebelum membuat yang baru
+    }
+    
+    if (sortedMonths.length > 0) {
+        monthlyChartCanvas.style.display = 'block';
+        chartInstance = new Chart(monthlyChartCanvas, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Pengeluaran Bulanan (Rp)',
+                    data: chartData,
+                    backgroundColor: 'rgba(239, 68, 68, 0.7)', // Merah
+                    borderColor: 'rgba(239, 68, 68, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false, // Memungkinkan canvas untuk di-resize lebih baik
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'Rp ' + value.toLocaleString('id-ID');
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: true,
+                        text: 'Total Pengeluaran per Bulan (Bar Chart)'
+                    }
+                }
+            }
+        });
+    } else {
+        // Sembunyikan chart jika tidak ada data
+        monthlyChartCanvas.style.display = 'none';
+    }
+}
+window.renderChartsAndSummary = renderChartsAndSummary; // Jadikan global
 
 // ------------------------------------
 // FUNGSI PENGGANTI PROMPT/CONFIRM (Untuk Lingkungan Canvas)
