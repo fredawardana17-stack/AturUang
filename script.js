@@ -57,7 +57,7 @@ expensesCollection
         expenseList.innerHTML = ''; // Kosongkan daftar lama
         let total = 0;
 
-        snapshot.forEach(doc => {
+       snapshot.forEach(doc => {
             const data = doc.data();
             total += data.amount;
 
@@ -67,12 +67,18 @@ expensesCollection
             item.className = 'expense-item';
             
             // --- PERUBAHAN DI SINI ---
-            // Tampilkan deskripsi sebelum kategori
+            // Tombol EDIT ditambahkan sebelum tombol HAPUS
             item.innerHTML = `
                 <div>
                     <strong>${data.description}</strong> (${data.category}) - ${data.date} 
+                    
+                    <button onclick="editExpense('${docId}', ${data.amount}, '${data.category}', '${data.description}')" 
+                            style="background: #007bff; color: white; border: none; padding: 3px 6px; cursor: pointer; margin-left: 10px;">
+                        Edit
+                    </button>
+                    
                     <button onclick="deleteExpense('${docId}')" 
-                            style="background: #f44336; color: white; border: none; padding: 3px 6px; cursor: pointer; margin-left: 10px;">
+                            style="background: #f44336; color: white; border: none; padding: 3px 6px; cursor: pointer;">
                         Hapus
                     </button>
                 </div>
@@ -161,4 +167,32 @@ auth.onAuthStateChanged((user) => {
     }
 });
 
+// Tambahkan fungsi ini di script.js
+async function editExpense(docId, oldAmount, oldCategory, oldDescription) {
+    const newAmount = prompt(`Edit Jumlah (Lama: ${oldAmount}):`, oldAmount);
+    if (newAmount === null) return; // Batalkan jika user menekan Cancel
+
+    const newDescription = prompt(`Edit Deskripsi (Lama: ${oldDescription}):`, oldDescription);
+    if (newDescription === null) return;
+
+    // Catatan: Menggunakan prompt untuk kategori agak rumit, kita pertahankan prompt saja untuk cepat.
+    const newCategory = prompt(`Edit Kategori (Lama: ${oldCategory}):`, oldCategory);
+    if (newCategory === null) return;
+
+    if (newAmount && newDescription && newCategory) {
+        try {
+            await db.collection("expenses").doc(docId).update({
+                amount: parseInt(newAmount), // Pastikan tetap integer
+                description: newDescription,
+                category: newCategory
+            });
+            console.log("Dokumen berhasil diupdate!");
+        } catch (error) {
+            console.error("Error saat mengupdate dokumen: ", error);
+            alert("Gagal mengupdate transaksi.");
+        }
+    } else {
+        alert("Semua kolom harus diisi!");
+    }
+}
 // CATATAN PENTING: Untuk multi-user yang lebih aman, Anda perlu mengimplementasikan Firebase Authentication.
