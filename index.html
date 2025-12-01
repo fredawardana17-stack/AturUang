@@ -58,14 +58,16 @@
 <div class="container">
     <h1 class="text-3xl font-bold mb-6 text-center">💰 Catat Pengeluaran Harian</h1>
 
-    <!-- BAGIAN 1: OTENTIKASI (LOGIN/DAFTAR) -->
+    <!-- BAGIAN 1: INPUT NAMA PENGGUNA (Ganti Otentikasi) -->
     <div id="auth-section" class="auth-card">
-        <h2 class="text-xl font-semibold mb-4 text-blue-700">Akses Aplikasi</h2>
-        <input type="email" id="auth-email" placeholder="Email" required class="w-full p-3 mb-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-        <input type="password" id="auth-password" placeholder="Kata Sandi" required class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-        <div class="flex space-x-2">
-            <button onclick="signUp()" class="flex-1 p-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition duration-150">Daftar</button>
-            <button onclick="signIn()" class="flex-1 p-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150">Masuk</button>
+        <h2 class="text-xl font-semibold mb-4 text-blue-700">Mulai Catat Pengeluaran</h2>
+        <p class="text-sm text-gray-600 mb-4">Aplikasi ini menggunakan login anonim otomatis.</p>
+        
+        <!-- Input Nama Pengguna -->
+        <input type="text" id="user-name-input" placeholder="Masukkan Nama Anda" required class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+        
+        <div class="flex">
+            <button id="start-button" onclick="startAppAsUser()" class="flex-1 p-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150">Mulai</button>
         </div>
         <div id="auth-error" class="mt-4 text-red-600 text-sm font-medium"></div>
     </div>
@@ -73,7 +75,7 @@
     <!-- BAGIAN 2: APLIKASI UTAMA (TIDAK TERLIHAT SEBELUM LOGIN) -->
     <div id="main-app" class="app-card" style="display: none;">
         <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-medium text-gray-700">Halo, <span id="user-email" class="font-bold text-blue-700">Pengguna</span>!</h3>
+            <h3 class="text-lg font-medium text-gray-700">Halo, <span id="user-display-name" class="font-bold text-blue-700">Pengguna</span>!</h3>
             <button onclick="signOut()" class="p-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold text-sm rounded-lg transition duration-150">Keluar</button>
         </div>
         
@@ -119,10 +121,11 @@
 let db = null;
 let auth = null;
 let currentUserId = null;
+let currentUserName = null; // Menyimpan nama pengguna
 let expenseListeners = []; // Untuk melacak mock listeners
 let expenseData = {}; // Simpan data mock di memori
 
-let emailInput, passwordInput, authError, authSection, mainApp, userEmailSpan;
+let userNameInput, startButton, authError, authSection, mainApp, userDisplayNameSpan;
 let expenseForm, amountInput, descriptionInput, categoryInput, expenseList, totalAmountSpan;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -144,12 +147,12 @@ try {
 // ------------------------------------
 window.onload = function() {
     // 1. DOM Elements
-    emailInput = document.getElementById('auth-email');
-    passwordInput = document.getElementById('auth-password');
+    userNameInput = document.getElementById('user-name-input');
+    startButton = document.getElementById('start-button');
     authError = document.getElementById('auth-error');
     authSection = document.getElementById('auth-section');
     mainApp = document.getElementById('main-app');
-    userEmailSpan = document.getElementById('user-email');
+    userDisplayNameSpan = document.getElementById('user-display-name');
     expenseForm = document.getElementById('expense-form');
     amountInput = document.getElementById('amount');
     descriptionInput = document.getElementById('description');
@@ -185,7 +188,7 @@ window.onload = function() {
         const mockUid = typeof __initial_auth_token !== 'undefined' ? 
                         'mock-' + String(__initial_auth_token).slice(0, 10) : 
                         'mock-anon-user';
-
+        
         // ---------------------------------
         // MOCK FIREBASE OBJECTS DEFINITION
         // ---------------------------------
@@ -199,10 +202,6 @@ window.onload = function() {
                 setTimeout(() => callback(mockAuthUser), 10);
                 return () => {}; // Mock unsubscribe
             },
-            signInWithCustomToken: () => {
-                console.log("[SIMULASI AUTH] Custom token sign-in diabaikan, menggunakan mock user.");
-                return Promise.resolve();
-            },
             signInAnonymously: () => {
                 console.log("[SIMULASI AUTH] Anonim sign-in diabaikan, menggunakan mock user.");
                 return Promise.resolve();
@@ -212,8 +211,6 @@ window.onload = function() {
                 if (auth.listener) auth.listener(null);
                 console.log("[SIMULASI AUTH] Sign Out diabaikan.");
             },
-            createUserWithEmailAndPassword: () => Promise.reject(new Error("Pendaftaran non-simulasi gagal di mode mock.")),
-            signInWithEmailAndPassword: () => Promise.reject(new Error("Login non-simulasi gagal di mode mock.")),
             // Tambahkan listener untuk signOut simulasi
             listener: null 
         };
@@ -315,75 +312,54 @@ window.onload = function() {
 
 
 // ------------------------------------
-// BAGIAN 2: FUNGSI OTENTIKASI (SIGN UP, SIGN IN, SIGN OUT)
+// BAGIAN 2: FUNGSI OTENTIKASI BARU (ANONIM & NAMA PENGGUNA)
 // ------------------------------------
-
-async function signUp() {
-    if (db && auth && !auth.currentUser.email.startsWith('simulasi@')) {
-        // Logika Firebase sebenarnya
-        const email = emailInput.value;
-        const password = passwordInput.value;
-        authError.textContent = '';
-        try {
-            await auth.createUserWithEmailAndPassword(email, password);
-        } catch (error) {
-            authError.textContent = 'Gagal Daftar: ' + error.message;
-        }
-    } else {
-        authError.textContent = 'Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.';
-        console.error("[AUTH ERROR] Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.");
-    }
-}
-
-async function signIn() {
-    if (db && auth && !auth.currentUser.email.startsWith('simulasi@')) {
-        // Logika Firebase sebenarnya
-        const email = emailInput.value;
-        const password = passwordInput.value;
-        authError.textContent = '';
-        try {
-            await auth.signInWithEmailAndPassword(email, password);
-        } catch (error) {
-            authError.textContent = 'Gagal Masuk: ' + error.message;
-        }
-    } else {
-        authError.textContent = 'Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.';
-        console.error("[AUTH ERROR] Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.");
-    }
-}
 
 function signOut() {
     if (auth) {
+        // Hapus nama pengguna saat logout
+        sessionStorage.removeItem('currentUserName');
         auth.signOut();
         console.log("[DEBUG AUTH] Pengguna mencoba Keluar.");
     }
 }
 
 // Menghubungkan fungsi ke window agar dapat dipanggil dari onclick
-window.signUp = signUp;
-window.signIn = signIn;
 window.signOut = signOut;
+
+// Fungsi untuk menangani klik tombol "Mulai"
+function startAppAsUser() {
+    const name = userNameInput.value.trim();
+    if (name) {
+        currentUserName = name;
+        sessionStorage.setItem('currentUserName', name);
+        // Pindah ke tampilan utama
+        authSection.style.display = 'none';
+        mainApp.style.display = 'block';
+        userDisplayNameSpan.textContent = currentUserName;
+        // Panggil kembali listener untuk memuat data (jika auth sudah selesai)
+        if (currentUserId) {
+            loadExpenses();
+        }
+    } else {
+        authError.textContent = 'Nama Pengguna harus diisi untuk memulai.';
+    }
+}
+window.startAppAsUser = startAppAsUser;
 
 // ------------------------------------
 // BAGIAN 3: LISTENER PERUBAHAN STATUS OTENTIKASI
 // ------------------------------------
 
-// Fungsi untuk menangani otentikasi awal (Custom Token atau Anonim)
+// Fungsi untuk menangani otentikasi awal (Selalu Anonim)
 async function initialAuth() {
-    if (!auth || auth.currentUser.email.startsWith('simulasi@')) {
-        // Abaikan di mode simulasi karena onAuthStateChanged sudah dipanggil secara manual
-        return;
-    }
+    if (!auth) return;
     
-    // Logika Firebase sebenarnya
-    if (typeof __initial_auth_token !== 'undefined') {
-        try {
-            await auth.signInWithCustomToken(__initial_auth_token);
-        } catch (error) {
-            await auth.signInAnonymously();
-        }
-    } else {
+    // Logika Firebase sebenarnya atau Mock
+    try {
         await auth.signInAnonymously();
+    } catch (error) {
+        console.error("Gagal melakukan sign-in Anonim:", error);
     }
 }
 
@@ -394,35 +370,52 @@ function setupAuthListener() {
         return;
     }
     
+    // Otentikasi awal (dilakukan segera di mode anonim)
+    initialAuth();
+    
     auth.onAuthStateChanged((user) => {
         if (user) {
-            // Pengguna berhasil login/masuk
+            // Pengguna berhasil login/masuk (Anonim)
             currentUserId = user.uid;
             console.log(`[DEBUG AUTH] Status: LOGIN. UID: ${currentUserId}, Email: ${user.email || 'Anonim'}`);
             
-            if (authSection && mainApp) {
+            // Cek nama pengguna
+            currentUserName = sessionStorage.getItem('currentUserName');
+
+            if (currentUserName) {
+                // NAMA ADA: Tampilkan aplikasi utama
                 authSection.style.display = 'none';
                 mainApp.style.display = 'block';
-                // Tampilkan ID jika anonim atau simulasi
-                userEmailSpan.textContent = user.email || `ID: ${currentUserId}`; 
+                userDisplayNameSpan.textContent = currentUserName; 
+                
+                // Setelah login, siapkan form submit dan muat data
+                setupExpenseFormListener();
+                loadExpenses();
+
+            } else {
+                // NAMA BELUM ADA: Tampilkan bagian input nama
+                authSection.style.display = 'block';
+                mainApp.style.display = 'none';
+                
+                // Set placeholder di mode simulasi
                 if (user.email && user.email.startsWith('simulasi@')) {
-                    userEmailSpan.textContent += ' (Simulasi)';
+                    userNameInput.placeholder = 'Masukkan Nama (Simulasi)';
                 }
-                authError.textContent = '';
             }
-
-            // Setelah login, siapkan form submit dan muat data
-            setupExpenseFormListener();
-            loadExpenses();
-
+            
+            authError.textContent = '';
+            
         } else {
-            // Pengguna logout atau belum login
+            // Pengguna logout
             console.log("[DEBUG AUTH] Status: LOGOUT.");
             currentUserId = null;
+            currentUserName = null;
             
             if (authSection && mainApp) {
                 authSection.style.display = 'block';
                 mainApp.style.display = 'none';
+                // Reset input nama pengguna
+                userNameInput.value = '';
             }
 
             // Bersihkan tampilan saat logout
@@ -432,11 +425,6 @@ function setupAuthListener() {
             }
         }
     });
-    
-    // Panggil otentikasi awal (Hanya di mode NON-SIMULASI)
-    if (!auth.currentUser || !auth.currentUser.email || !auth.currentUser.email.startsWith('simulasi@')) {
-        initialAuth(); 
-    }
 }
 
 // ------------------------------------
@@ -454,9 +442,9 @@ function setupExpenseFormListener() {
 async function handleExpenseSubmit(e) {
     e.preventDefault();
 
-    if (!currentUserId || !db) {
-        authError.textContent = 'Layanan tidak tersedia. Silakan masuk (login) terlebih dahulu.';
-        return console.error("[DEBUG DATA] Gagal menambah. Tidak ada user atau DB tidak terinisialisasi.");
+    if (!currentUserId || !db || !currentUserName) {
+        authError.textContent = 'Layanan tidak tersedia. Silakan masuk (login) terlebih dahulu dan isi Nama Pengguna.';
+        return console.error("[DEBUG DATA] Gagal menambah. Tidak ada user, DB, atau Nama Pengguna tidak terinisialisasi.");
     }
 
     const amount = parseInt(amountInput.value);
@@ -477,7 +465,8 @@ async function handleExpenseSubmit(e) {
                 description: description,
                 date: date,
                 timestamp: db.firestore.FieldValue.serverTimestamp(),
-                userId: currentUserId 
+                userId: currentUserId,
+                userName: currentUserName // Simpan nama pengguna bersama transaksi
             });
             console.log("[DEBUG DATA] Transaksi berhasil ditambahkan!");
             expenseForm.reset(); 
@@ -492,7 +481,7 @@ async function handleExpenseSubmit(e) {
 
 // Fungsi 4B: READ (Memuat dan Menampilkan Pengeluaran)
 function loadExpenses() {
-    if (!currentUserId || !expenseList || !totalAmountSpan || !db) {
+    if (!currentUserId || !expenseList || !totalAmountSpan || !db || !currentUserName) {
         return console.log("[DEBUG DATA] loadExpenses dihentikan. Pre-requisite tidak terpenuhi.");
     }
     
