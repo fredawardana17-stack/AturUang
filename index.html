@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplikasi Pengeluaran Mudah</title>
-    <!-- Memuat Tailwind CSS untuk styling -->
+    <!-- 
+        CATATAN: CDN Tailwind CSS digunakan untuk pengembangan cepat di satu file. 
+        Untuk lingkungan produksi, disarankan menggunakan instalasi penuh Tailwind.
+    -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Gaya Kustom untuk Keindahan dan Responsivitas */
@@ -44,7 +47,7 @@
         }
     </style>
     
-    <!-- SDK Firebase Kompatibilitas Layer (Digunakan oleh logika script Anda) -->
+    <!-- SDK Firebase Kompatibilitas Layer -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
@@ -111,346 +114,359 @@
     
 <script>
 // ------------------------------------
-// BAGIAN 1: KONFIGURASI DAN INISIALISASI FIREBASE (DISESUAIKAN UNTUK CANVAS)
+// BAGIAN 1: KONFIGURASI, INISIALISASI, DAN CAKUPAN GLOBAL
 // ------------------------------------
-// Menggunakan variabel global Canvas untuk konfigurasi dan otentikasi
+let db;
+let auth;
+let currentUserId = null;
+let emailInput, passwordInput, authError, authSection, mainApp, userEmailSpan;
+let expenseForm, amountInput, descriptionInput, categoryInput, expenseList, totalAmountSpan;
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
 
-// LOG DEBUG: Cek ketersediaan variabel lingkungan
-console.log("[DEBUG FIREBASE] App ID:", appId);
-if (Object.keys(firebaseConfig).length === 0) {
-    console.error("[DEBUG FIREBASE] Konfigurasi Firebase tidak ditemukan! Pastikan lingkungan Canvas menyediakannya.");
-} else {
-    console.log("[DEBUG FIREBASE] Konfigurasi Firebase dimuat.");
+// ------------------------------------
+// SELURUH LOGIKA APLIKASI DIJALANKAN SETELAH DOM SIAP
+// ------------------------------------
+window.onload = function() {
+    // 1. DOM Elements (Sekarang aman karena HTML sudah dimuat)
+    emailInput = document.getElementById('auth-email');
+    passwordInput = document.getElementById('auth-password');
+    authError = document.getElementById('auth-error');
+    authSection = document.getElementById('auth-section');
+    mainApp = document.getElementById('main-app');
+    userEmailSpan = document.getElementById('user-email');
+    expenseForm = document.getElementById('expense-form');
+    amountInput = document.getElementById('amount');
+    descriptionInput = document.getElementById('description');
+    categoryInput = document.getElementById('category');
+    expenseList = document.getElementById('expense-list');
+    totalAmountSpan = document.getElementById('total-amount');
+
+    // 2. INISIALISASI FIREBASE
+    try {
+        if (!firebaseConfig.projectId) {
+            console.error("[FATAL ERROR] Konfigurasi Firebase tidak lengkap (Missing Project ID).");
+            if (authError) authError.textContent = 'Kesalahan Fatal: Konfigurasi Firebase tidak lengkap. Cek Konsol (F12).';
+            return;
+        }
+
+        // Inisialisasi
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        db = firebase.firestore();
+        auth = firebase.auth();
+        
+        firebase.firestore.setLogLevel('debug');
+        console.log("[DEBUG FIREBASE] Firebase berhasil diinisialisasi dan objek db/auth tersedia.");
+        
+        // 3. START LISTENERS DAN AUTHENTIKASI
+        setupAuthListener();
+        
+    } catch (e) {
+        console.error("[FATAL ERROR] Gagal menginisialisasi Firebase:", e);
+        if (authError) {
+            authError.textContent = 'Kesalahan Fatal saat inisialisasi Firebase. Cek Konsol (F12).';
+        }
+    }
+};
+
+
+// ------------------------------------
+// BAGIAN 2: FUNGSI OTENTIKASI (SIGN UP, SIGN IN, SIGN OUT)
+// ------------------------------------
+
+async function signUp() {
+    if (!auth) return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    authError.textContent = '';
+    console.log(`[DEBUG AUTH] Mencoba Daftar dengan email: ${email}`);
+
+    try {
+        await auth.createUserWithEmailAndPassword(email, password);
+        console.log(`[DEBUG AUTH] Daftar Sukses! Pengguna dibuat.`);
+    } catch (error) {
+        authError.textContent = 'Gagal Daftar: ' + error.message;
+        console.error(`[DEBUG AUTH] Gagal Daftar: ${error.message}`, error);
+    }
 }
 
-// Inisialisasi Firebase
-try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
+async function signIn() {
+    if (!auth) return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
+    const email = emailInput.value;
+    const password = passwordInput.value;
+    authError.textContent = '';
+    console.log(`[DEBUG AUTH] Mencoba Masuk dengan email: ${email}`);
+
+    try {
+        await auth.signInWithEmailAndPassword(email, password);
+        console.log(`[DEBUG AUTH] Masuk Sukses!`);
+    } catch (error) {
+        authError.textContent = 'Gagal Masuk: ' + error.message;
+        console.error(`[DEBUG AUTH] Gagal Masuk: ${error.message}`, error);
     }
-    const db = firebase.firestore();
-    const auth = firebase.auth(); 
-    
-    // Aktifkan logging debug untuk Firebase, sangat membantu dalam diagnosis
-    firebase.firestore.setLogLevel('debug');
-    console.log("[DEBUG FIREBASE] Firebase berhasil diinisialisasi. Logging level diatur ke debug.");
+}
 
-    let currentUserId = null; // Variabel global untuk ID pengguna yang sedang login
-
-    // ------------------------------------
-    // BAGIAN 2: DEKLARASI VARIABEL DOM 
-    // ------------------------------------
-    // A. Otentikasi
-    const emailInput = document.getElementById('auth-email');
-    const passwordInput = document.getElementById('auth-password');
-    const authError = document.getElementById('auth-error');
-
-    // B. Tampilan Utama
-    const authSection = document.getElementById('auth-section');
-    const mainApp = document.getElementById('main-app');
-    const userEmailSpan = document.getElementById('user-email');
-
-    // C. Formulir Pengeluaran
-    const expenseForm = document.getElementById('expense-form');
-    const amountInput = document.getElementById('amount');
-    const descriptionInput = document.getElementById('description');
-    const categoryInput = document.getElementById('category');
-    const expenseList = document.getElementById('expense-list');
-    const totalAmountSpan = document.getElementById('total-amount');
-
-    // ------------------------------------
-    // BAGIAN 3: FUNGSI OTENTIKASI (SIGN UP, SIGN IN, SIGN OUT)
-    // ------------------------------------
-
-    async function signUp() {
-        if (!emailInput || !passwordInput) {
-            console.error("Elemen input otentikasi tidak ditemukan.");
-            return;
-        }
-        const email = emailInput.value;
-        const password = passwordInput.value;
-        authError.textContent = '';
-        console.log(`[DEBUG AUTH] Mencoba Daftar dengan email: ${email}`);
-
-        try {
-            await auth.createUserWithEmailAndPassword(email, password);
-            console.log(`[DEBUG AUTH] Daftar Sukses! Pengguna dibuat.`);
-        } catch (error) {
-            authError.textContent = 'Gagal Daftar: ' + error.message;
-            console.error(`[DEBUG AUTH] Gagal Daftar: ${error.message}`, error);
-        }
-    }
-
-    async function signIn() {
-        if (!emailInput || !passwordInput) {
-            console.error("Elemen input otentikasi tidak ditemukan.");
-            return;
-        }
-        const email = emailInput.value;
-        const password = passwordInput.value;
-        authError.textContent = '';
-        console.log(`[DEBUG AUTH] Mencoba Masuk dengan email: ${email}`);
-
-        try {
-            await auth.signInWithEmailAndPassword(email, password);
-            console.log(`[DEBUG AUTH] Masuk Sukses!`);
-        } catch (error) {
-            authError.textContent = 'Gagal Masuk: ' + error.message;
-            console.error(`[DEBUG AUTH] Gagal Masuk: ${error.message}`, error);
-        }
-    }
-
-    function signOut() {
+function signOut() {
+    if (auth) {
         auth.signOut();
         console.log("[DEBUG AUTH] Pengguna mencoba Keluar.");
     }
+}
 
-    // Menghubungkan fungsi ke window agar dapat dipanggil dari onclick di HTML
-    window.signUp = signUp;
-    window.signIn = signIn;
-    window.signOut = signOut;
+// Menghubungkan fungsi ke window agar dapat dipanggil dari onclick
+window.signUp = signUp;
+window.signIn = signIn;
+window.signOut = signOut;
 
-    // ------------------------------------
-    // BAGIAN 4: LISTENER PERUBAHAN STATUS OTENTIKASI (PENGONTROL TAMPILAN & INITIAL AUTH)
-    // ------------------------------------
+// ------------------------------------
+// BAGIAN 3: LISTENER PERUBAHAN STATUS OTENTIKASI
+// ------------------------------------
 
-    // Fungsi untuk menangani otentikasi awal (custom token atau anonim)
-    async function initialAuth() {
-        if (typeof __initial_auth_token !== 'undefined') {
-            try {
-                console.log("[DEBUG AUTH] Mencoba Masuk dengan Custom Token...");
-                await auth.signInWithCustomToken(__initial_auth_token);
-            } catch (error) {
-                console.error("[DEBUG AUTH] Custom token sign-in GAGAL, beralih ke Anonim:", error);
-                await auth.signInAnonymously();
-            }
-        } else {
-            console.log("[DEBUG AUTH] Custom Token tidak tersedia, Masuk Anonim...");
+// Fungsi untuk menangani otentikasi awal (custom token atau anonim)
+async function initialAuth() {
+    if (!auth) return;
+    if (typeof __initial_auth_token !== 'undefined') {
+        try {
+            console.log("[DEBUG AUTH] Mencoba Masuk dengan Custom Token...");
+            await auth.signInWithCustomToken(__initial_auth_token);
+        } catch (error) {
+            console.error("[DEBUG AUTH] Custom token sign-in GAGAL, beralih ke Anonim:", error);
             await auth.signInAnonymously();
         }
+    } else {
+        console.log("[DEBUG AUTH] Custom Token tidak tersedia, Masuk Anonim...");
+        await auth.signInAnonymously();
     }
+}
 
-    // Listener utama untuk perubahan status otentikasi
+// Menyiapkan Listener Otentikasi
+function setupAuthListener() {
+    if (!auth) return;
+
     auth.onAuthStateChanged((user) => {
         if (user) {
             // Pengguna berhasil login/masuk
             currentUserId = user.uid;
             console.log(`[DEBUG AUTH] Status: LOGIN. UID: ${currentUserId}, Email: ${user.email || 'Anonim'}`);
             
-            authSection.style.display = 'none';
-            mainApp.style.display = 'block';
-            userEmailSpan.textContent = user.email || currentUserId; 
+            if (authSection && mainApp) {
+                authSection.style.display = 'none';
+                mainApp.style.display = 'block';
+                userEmailSpan.textContent = user.email || currentUserId; 
+            }
 
-            // Muat data khusus pengguna ini
+            // Setelah login, siapkan form submit dan muat data
+            setupExpenseFormListener();
             loadExpenses();
 
         } else {
             // Pengguna logout atau belum login
             console.log("[DEBUG AUTH] Status: LOGOUT.");
             currentUserId = null;
-            authSection.style.display = 'block';
-            mainApp.style.display = 'none';
+            
+            if (authSection && mainApp) {
+                authSection.style.display = 'block';
+                mainApp.style.display = 'none';
+            }
 
             // Bersihkan tampilan saat logout
             if (expenseList && totalAmountSpan) {
                 expenseList.innerHTML = '';
                 totalAmountSpan.textContent = `Rp 0`;
             }
-            
-            // Coba otentikasi awal saat pertama kali dimuat atau setelah logout
-            initialAuth(); 
         }
     });
-
-
-    // ------------------------------------
-    // BAGIAN 5: FUNGSI PENGELUARAN (CRUD)
-    // ------------------------------------
-
-    // Fungsi 5A: CREATE (Menambahkan Pengeluaran)
-    if (expenseForm) {
-        expenseForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            if (!currentUserId) {
-                console.log("[DEBUG DATA] Peringatan: Silakan masuk (login) terlebih dahulu!");
-                return;
-            }
-
-            const amount = parseInt(amountInput.value);
-            const category = categoryInput.value;
-            const description = descriptionInput.value;
-            const date = new Date().toISOString().split('T')[0];
-            
-            // Path Collection Privat
-            const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-            const userExpensesCollection = db.collection(collectionPath);
-            console.log(`[DEBUG DATA] Mencoba menambah data ke path: ${collectionPath}`);
-
-
-            if (amount > 0 && category && description) {
-                try {
-                    await userExpensesCollection.add({
-                        amount: amount,
-                        category: category,
-                        description: description,
-                        date: date,
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                        userId: currentUserId // Simpan ID pengguna
-                    });
-                    console.log("[DEBUG DATA] Transaksi berhasil ditambahkan!");
-                    // Reset form
-                    amountInput.value = '';
-                    descriptionInput.value = '';
-                    categoryInput.value = '';
-                } catch (error) {
-                    console.error("[DEBUG DATA] Error saat menambahkan dokumen: ", error);
-                    authError.textContent = 'Gagal menambah transaksi. Cek konsol (F12) untuk detail error Firebase.';
-                }
-            } else {
-                console.log("[DEBUG DATA] Peringatan: Pastikan jumlah (>0), kategori, dan deskripsi terisi.");
-            }
-        });
-
-    }
-
-    // Fungsi 5B: READ (Memuat dan Menampilkan Pengeluaran)
-    function loadExpenses() {
-        if (!currentUserId || !expenseList || !totalAmountSpan) {
-            console.log("[DEBUG DATA] loadExpenses dihentikan. currentUserId atau elemen DOM tidak siap.");
-            return;
-        }
-        
-        // Path Collection Privat
-        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-        const userExpensesCollection = db.collection(collectionPath);
-        console.log(`[DEBUG DATA] Menyiapkan listener data dari path: ${collectionPath}`);
-
-
-        // Filter data berdasarkan userId pengguna yang login
-        userExpensesCollection
-            .orderBy('timestamp', 'desc')
-            .onSnapshot(snapshot => {
-                console.log(`[DEBUG DATA] Snapshot diterima. Jumlah dokumen: ${snapshot.size}`);
-                expenseList.innerHTML = '';
-                let total = 0;
-
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const itemAmount = typeof data.amount === 'number' ? data.amount : 0;
-                    total += itemAmount;
-
-                    const docId = doc.id; 
-                    
-                    const item = document.createElement('div');
-                    item.className = 'expense-item';
-                    
-                    // Struktur HTML item pengeluaran
-                    item.innerHTML = `
-                        <div style="flex-grow: 1;">
-                            <strong class="text-gray-900">${data.description}</strong> 
-                            <span class="text-sm text-gray-500">(${data.category}) - ${data.date}</span>
-                        </div>
-                        <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
-                        <div class="flex space-x-2">
-                            <!-- Tombol Edit -->
-                            <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${data.category}', '${data.description}')" 
-                                    class="p-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition duration-150">
-                                Edit
-                            </button>
-                            
-                            <!-- Tombol Hapus -->
-                            <button onclick="window.handleDeleteClick('${docId}')" 
-                                    class="p-2 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition duration-150">
-                                Hapus
-                            </button>
-                        </div>
-                    `;
-                    
-                    expenseList.appendChild(item);
-                });
-                
-                totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
-            }, error => {
-                console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
-                authError.textContent = 'Gagal memuat data. Cek konsol (F12) untuk detail error Firestore.';
-            });
-
-    }
-
-    // ------------------------------------
-    // FUNGSI PENGGANTI PROMPT/CONFIRM (Untuk Lingkungan Canvas)
-    // ------------------------------------
-
-    // Fungsi 5C: UPDATE (Mengedit Pengeluaran) - Diubah untuk konsol
-    function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
-        console.log("--- EDIT TRANSAKSI ---");
-        console.log(`ID Dokumen: ${docId}`);
-        console.log(`Data Lama: Jumlah: ${oldAmount}, Kategori: ${oldCategory}, Deskripsi: ${oldDescription}`);
-        console.log("Silakan panggil fungsi 'manualEdit' di konsol untuk mengupdate:");
-        console.log(`Contoh: manualEdit('${docId}', 50000, 'Baru', 'Deskripsi Baru')`);
-
-        // Fungsi bantuan manual untuk debugging/pengujian
-        window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
-            if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
-            
-            const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-            const expenseDocRef = db.collection(collectionPath).doc(id);
-
-            if (newAmount && newCategory && newDescription) {
-                try {
-                    await expenseDocRef.update({
-                        amount: parseInt(newAmount), 
-                        description: newDescription,
-                        category: newCategory
-                    });
-                    console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil diupdate.`);
-                } catch (error) {
-                    console.error("[Gagal MANUAL] Error saat mengupdate dokumen: ", error);
-                }
-            } else {
-                console.error("[Gagal MANUAL] Semua kolom (jumlah, kategori, deskripsi) harus diisi!");
-            }
-        };
-
-    }
-
-    // Fungsi 5D: DELETE (Menghapus Pengeluaran) - Diubah untuk konsol
-    function handleDeleteClick(docId) {
-        console.log("--- HAPUS TRANSAKSI ---");
-        console.log(`ID Dokumen: ${docId}`);
-        console.log("Untuk menghapus, silakan panggil fungsi 'manualDelete' di konsol:");
-        console.log(`Contoh: manualDelete('${docId}')`);
-
-        // Fungsi bantuan manual untuk debugging/pengujian
-        window.manualDelete = async (id) => {
-            if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
-            
-            const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
-            const expenseDocRef = db.collection(collectionPath).doc(id);
-
-            try {
-                await expenseDocRef.delete();
-                console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil dihapus.`);
-            } catch (error) {
-                console.error("[Gagal MANUAL] Error saat menghapus dokumen: ", error);
-            }
-        };
-    }
-
-    // Membuat fungsi handler baru tersedia secara global
-    window.handleEditClick = handleEditClick;
-    window.handleDeleteClick = handleDeleteClick;
-
-} catch (e) {
-    console.error("[FATAL ERROR] Gagal menginisialisasi Firebase:", e);
-    document.getElementById('auth-error').textContent = 'Kesalahan Fatal saat inisialisasi aplikasi. Cek Konsol (F12).';
+    
+    // Panggil otentikasi awal segera setelah listener disiapkan
+    initialAuth(); 
 }
 
-// Panggil otentikasi awal saat skrip dimuat (ini akan memicu onAuthStateChanged)
-// Catatan: onAuthStateChanged akan dipanggil segera setelah skrip selesai dimuat.
+// ------------------------------------
+// BAGIAN 4: FUNGSI PENGELUARAN (CRUD)
+// ------------------------------------
+
+// Fungsi 4A: CREATE (Menambahkan Pengeluaran) - Listener di dalam fungsi
+function setupExpenseFormListener() {
+    if (expenseForm) {
+        expenseForm.removeEventListener('submit', handleExpenseSubmit); // Hapus listener lama jika ada
+        expenseForm.addEventListener('submit', handleExpenseSubmit); // Tambahkan listener baru
+    }
+}
+
+async function handleExpenseSubmit(e) {
+    e.preventDefault();
+
+    if (!currentUserId || !db) {
+        console.error("[DEBUG DATA] Gagal menambah. Tidak ada user atau DB tidak terinisialisasi.");
+        authError.textContent = 'Silakan masuk (login) terlebih dahulu atau ulangi inisialisasi.';
+        return;
+    }
+
+    const amount = parseInt(amountInput.value);
+    const category = categoryInput.value;
+    const description = descriptionInput.value;
+    const date = new Date().toISOString().split('T')[0];
+    
+    // Path Collection Privat
+    const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+    const userExpensesCollection = db.collection(collectionPath);
+    console.log(`[DEBUG DATA] Mencoba menambah data ke path: ${collectionPath}`);
+
+
+    if (amount > 0 && category && description) {
+        try {
+            await userExpensesCollection.add({
+                amount: amount,
+                category: category,
+                description: description,
+                date: date,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                userId: currentUserId 
+            });
+            console.log("[DEBUG DATA] Transaksi berhasil ditambahkan!");
+            // Reset form
+            expenseForm.reset(); 
+        } catch (error) {
+            console.error("[DEBUG DATA] Error saat menambahkan dokumen: ", error);
+            authError.textContent = 'Gagal menambah transaksi. Kemungkinan masalah Izin (Security Rules). Cek konsol.';
+        }
+    } else {
+        console.log("[DEBUG DATA] Peringatan: Pastikan semua kolom terisi dengan benar.");
+    }
+}
+
+// Fungsi 4B: READ (Memuat dan Menampilkan Pengeluaran)
+function loadExpenses() {
+    if (!currentUserId || !expenseList || !totalAmountSpan || !db) {
+        console.log("[DEBUG DATA] loadExpenses dihentikan. Pre-requisite tidak terpenuhi.");
+        return;
+    }
+    
+    // Path Collection Privat
+    const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+    const userExpensesCollection = db.collection(collectionPath);
+    console.log(`[DEBUG DATA] Menyiapkan listener data dari path: ${collectionPath}`);
+
+
+    // Filter data berdasarkan userId pengguna yang login
+    userExpensesCollection
+        .orderBy('timestamp', 'desc')
+        .onSnapshot(snapshot => {
+            console.log(`[DEBUG DATA] Snapshot diterima. Jumlah dokumen: ${snapshot.size}`);
+            expenseList.innerHTML = '';
+            let total = 0;
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const itemAmount = typeof data.amount === 'number' ? data.amount : 0;
+                total += itemAmount;
+
+                const docId = doc.id; 
+                
+                const item = document.createElement('div');
+                item.className = 'expense-item';
+                
+                // Struktur HTML item pengeluaran
+                item.innerHTML = `
+                    <div style="flex-grow: 1;">
+                        <strong class="text-gray-900">${data.description}</strong> 
+                        <span class="text-sm text-gray-500">(${data.category}) - ${data.date}</span>
+                    </div>
+                    <div class="amount">Rp ${itemAmount.toLocaleString('id-ID')}</div>
+                    <div class="flex space-x-2">
+                        <!-- Tombol Edit -->
+                        <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${data.category}', '${data.description}')" 
+                                class="p-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition duration-150">
+                            Edit
+                        </button>
+                        
+                        <!-- Tombol Hapus -->
+                        <button onclick="window.handleDeleteClick('${docId}')" 
+                                class="p-2 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition duration-150">
+                            Hapus
+                        </button>
+                    </div>
+                `;
+                
+                expenseList.appendChild(item);
+            });
+            
+            totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
+        }, error => {
+            console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
+            authError.textContent = 'Gagal memuat data. Kemungkinan masalah Izin (Security Rules). Cek konsol.';
+        });
+
+}
+
+// ------------------------------------
+// FUNGSI PENGGANTI PROMPT/CONFIRM (Untuk Lingkungan Canvas)
+// ------------------------------------
+
+// Fungsi 4C: UPDATE (Mengedit Pengeluaran) - Diubah untuk konsol
+function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
+    if (!db) return console.error("[AUTH ERROR] DB tidak terinisialisasi.");
+    console.log("--- EDIT TRANSAKSI ---");
+    console.log(`ID Dokumen: ${docId}`);
+    console.log(`Data Lama: Jumlah: ${oldAmount}, Kategori: ${oldCategory}, Deskripsi: ${oldDescription}`);
+    console.log("Silakan panggil fungsi 'manualEdit' di konsol untuk mengupdate:");
+    console.log(`Contoh: manualEdit('${docId}', 50000, 'Baru', 'Deskripsi Baru')`);
+
+    // Fungsi bantuan manual untuk debugging/pengujian
+    window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
+        if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
+        
+        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        const expenseDocRef = db.collection(collectionPath).doc(id);
+
+        if (newAmount && newCategory && newDescription) {
+            try {
+                await expenseDocRef.update({
+                    amount: parseInt(newAmount), 
+                    description: newDescription,
+                    category: newCategory
+                });
+                console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil diupdate.`);
+            } catch (error) {
+                console.error("[Gagal MANUAL] Error saat mengupdate dokumen: ", error);
+            }
+        } else {
+            console.error("[Gagal MANUAL] Semua kolom (jumlah, kategori, deskripsi) harus diisi!");
+        }
+    };
+
+}
+
+// Fungsi 4D: DELETE (Menghapus Pengeluaran) - Diubah untuk konsol
+function handleDeleteClick(docId) {
+    if (!db) return console.error("[AUTH ERROR] DB tidak terinisialisasi.");
+    console.log("--- HAPUS TRANSAKSI ---");
+    console.log(`ID Dokumen: ${docId}`);
+    console.log("Untuk menghapus, silakan panggil fungsi 'manualDelete' di konsol:");
+    console.log(`Contoh: manualDelete('${docId}')`);
+
+    // Fungsi bantuan manual untuk debugging/pengujian
+    window.manualDelete = async (id) => {
+        if (!currentUserId) return console.error("Tidak ada pengguna yang terautentikasi.");
+        
+        const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        const expenseDocRef = db.collection(collectionPath).doc(id);
+
+        try {
+            await expenseDocRef.delete();
+            console.log(`[SUKSES MANUAL] Transaksi ${id} berhasil dihapus.`);
+        } catch (error) {
+            console.error("[Gagal MANUAL] Error saat menghapus dokumen: ", error);
+        }
+    };
+}
+
+// Membuat fungsi handler baru tersedia secara global
+window.handleEditClick = handleEditClick;
+window.handleDeleteClick = handleDeleteClick;
 </script>
 </body>
 </html>
