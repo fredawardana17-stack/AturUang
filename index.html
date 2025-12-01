@@ -47,7 +47,7 @@
         }
     </style>
     
-    <!-- SDK Firebase Kompatibilitas Layer (Digunakan karena versi ini paling stabil di environment ini) -->
+    <!-- SDK Firebase Kompatibilitas Layer -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script> 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
@@ -119,12 +119,15 @@
 let db = null;
 let auth = null;
 let currentUserId = null;
+let expenseListeners = []; // Untuk melacak mock listeners
+let expenseData = {}; // Simpan data mock di memori
+
 let emailInput, passwordInput, authError, authSection, mainApp, userEmailSpan;
 let expenseForm, amountInput, descriptionInput, categoryInput, expenseList, totalAmountSpan;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// Pastikan firebaseConfig adalah objek, bahkan jika string konfigurasinya kosong
+// Pastikan firebaseConfig adalah objek
 let firebaseConfig = {};
 try {
     const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
@@ -157,8 +160,7 @@ window.onload = function() {
     // 2. INISIALISASI FIREBASE (BLOK TAHAN BANTING)
     try {
         if (!firebaseConfig.projectId) {
-            console.warn("[WARNING FIREBASE] Konfigurasi Firebase (Project ID) TIDAK ADA. Otentikasi standar (Sign Up/Sign In) kemungkinan akan GAGAL. Mencoba melanjutkan untuk Auth Token internal.");
-            if (authError) authError.textContent = 'Peringatan: Config Firebase bermasalah. Mencoba Masuk Anonim...';
+            console.warn("[WARNING FIREBASE] Konfigurasi Firebase (Project ID) TIDAK ADA. Mencoba inisialisasi normal (ini mungkin akan gagal).");
         }
 
         // Inisialisasi Firebase
@@ -176,13 +178,138 @@ window.onload = function() {
         setupAuthListener();
         
     } catch (e) {
-        console.error("[FATAL ERROR] Gagal menginisialisasi Firebase di try/catch block:", e);
-        // Penting: Setel ke null jika gagal total untuk mencegah error 'undefined' di fungsi lain
-        auth = null;
-        db = null;
+        // FATAL CRASH: Config failed. Masuk ke Mode Simulasi.
+        console.error("[FATAL ERROR] Gagal menginisialisasi Firebase. Beralih ke MODE SIMULASI LOKAL:", e.message || e);
+        
+        // Tentukan ID Mock
+        const mockUid = typeof __initial_auth_token !== 'undefined' ? 
+                        'mock-' + String(__initial_auth_token).slice(0, 10) : 
+                        'mock-anon-user';
+
+        // ---------------------------------
+        // MOCK FIREBASE OBJECTS DEFINITION
+        // ---------------------------------
+        const mockAuthUser = { uid: mockUid, email: 'simulasi@local.app' };
+
+        // --- MOCK FIREBASE AUTH ---
+        auth = {
+            currentUser: mockAuthUser,
+            onAuthStateChanged: (callback) => {
+                // Simulasikan login berhasil setelah sedikit jeda
+                setTimeout(() => callback(mockAuthUser), 10);
+                return () => {}; // Mock unsubscribe
+            },
+            signInWithCustomToken: () => {
+                console.log("[SIMULASI AUTH] Custom token sign-in diabaikan, menggunakan mock user.");
+                return Promise.resolve();
+            },
+            signInAnonymously: () => {
+                console.log("[SIMULASI AUTH] Anonim sign-in diabaikan, menggunakan mock user.");
+                return Promise.resolve();
+            },
+            signOut: () => {
+                // Simulasikan logout dengan memanggil listener dengan null
+                if (auth.listener) auth.listener(null);
+                console.log("[SIMULASI AUTH] Sign Out diabaikan.");
+            },
+            createUserWithEmailAndPassword: () => Promise.reject(new Error("Pendaftaran non-simulasi gagal di mode mock.")),
+            signInWithEmailAndPassword: () => Promise.reject(new Error("Login non-simulasi gagal di mode mock.")),
+            // Tambahkan listener untuk signOut simulasi
+            listener: null 
+        };
+        auth.onAuthStateChanged = (callback) => {
+            auth.listener = callback;
+            setTimeout(() => callback(mockAuthUser), 10);
+            return () => { auth.listener = null; };
+        };
+
+
+        // --- MOCK FIRESTORE DB ---
+        db = {
+            collection: (path) => ({
+                add: (data) => {
+                    if (!expenseData[path]) expenseData[path] = [];
+                    const newDocId = crypto.randomUUID();
+                    const newDoc = { id: newDocId, data: { ...data, id: newDocId } };
+                    expenseData[path].push(newDoc);
+                    console.log(`[SIMULASI DB] Data ditambahkan ke ${path} (ID: ${newDocId}).`);
+                    // Setelah penambahan, panggil semua listener untuk simulasi real-time update
+                    expenseListeners.forEach(listener => listener.callback());
+                    return Promise.resolve({ id: newDocId });
+                },
+                doc: (id) => ({
+                    update: (data) => {
+                        const index = expenseData[path].findIndex(doc => doc.id === id);
+                        if (index !== -1) {
+                            expenseData[path][index].data = { ...expenseData[path][index].data, ...data };
+                            console.log(`[SIMULASI DB] Data ${id} berhasil diupdate di ${path}.`);
+                            expenseListeners.forEach(listener => listener.callback()); // Update listener
+                        }
+                        return Promise.resolve();
+                    },
+                    delete: () => {
+                        const initialLength = expenseData[path] ? expenseData[path].length : 0;
+                        if (expenseData[path]) {
+                            expenseData[path] = expenseData[path].filter(doc => doc.id !== id);
+                        }
+                        if (expenseData[path].length < initialLength) {
+                            console.log(`[SIMULASI DB] Data ${id} berhasil dihapus dari ${path}.`);
+                            expenseListeners.forEach(listener => listener.callback()); // Update listener
+                        }
+                        return Promise.resolve();
+                    }
+                }),
+                orderBy: () => db.collection(path), // Abaikan orderBy di mock
+                onSnapshot: (callback) => {
+                    const listenerId = crypto.randomUUID();
+                    
+                    const triggerCallback = () => {
+                        const sortedData = expenseData[path] ? [...expenseData[path]].sort((a, b) => {
+                            // Sort descending by timestamp mock
+                            const timeA = a.data.timestamp;
+                            const timeB = b.data.timestamp;
+                            return timeB > timeA ? 1 : (timeB < timeA ? -1 : 0);
+                        }) : [];
+                        
+                        const snapshot = {
+                            size: sortedData.length,
+                            forEach: (cb) => {
+                                sortedData.forEach(doc => {
+                                    cb({ id: doc.id, data: () => doc.data });
+                                });
+                            }
+                        };
+                        callback(snapshot);
+                    };
+
+                    expenseListeners.push({ id: listenerId, path: path, callback: triggerCallback });
+                    
+                    // Panggil segera untuk pemuatan awal
+                    triggerCallback();
+
+                    // Kembalikan fungsi unsubscribe
+                    return () => {
+                        expenseListeners = expenseListeners.filter(l => l.id !== listenerId);
+                        console.log(`[SIMULASI DB] Listener ${listenerId} di-unsubscribe.`);
+                    };
+                }
+            }),
+            firestore: { 
+                FieldValue: { 
+                    // Gunakan tanggal aktual untuk simulasi timestamp
+                    serverTimestamp: () => new Date().toISOString() 
+                } 
+            }
+        };
+
+
+        // Update UI message
         if (authError) {
-            authError.textContent = 'Kesalahan Fatal: Gagal inisialisasi Firebase. Cek Konsol (F12).';
+            authError.textContent = 'APLIKASI BERJALAN DALAM MODE SIMULASI LOKAL (DB eksternal gagal diinisialisasi).';
         }
+        
+        // Mulai rantai listener dengan objek mock
+        setupAuthListener();
     }
 };
 
@@ -192,40 +319,36 @@ window.onload = function() {
 // ------------------------------------
 
 async function signUp() {
-    if (!auth) {
-        authError.textContent = 'Layanan otentikasi (auth) tidak tersedia. Silakan cek konsol.';
-        return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
-    }
-    const email = emailInput.value;
-    const password = passwordInput.value;
-    authError.textContent = '';
-    console.log(`[DEBUG AUTH] Mencoba Daftar dengan email: ${email}`);
-
-    try {
-        await auth.createUserWithEmailAndPassword(email, password);
-        console.log(`[DEBUG AUTH] Daftar Sukses! Pengguna dibuat.`);
-    } catch (error) {
-        authError.textContent = 'Gagal Daftar: ' + error.message;
-        console.error(`[DEBUG AUTH] Gagal Daftar: ${error.message}`, error);
+    if (db && auth && !auth.currentUser.email.startsWith('simulasi@')) {
+        // Logika Firebase sebenarnya
+        const email = emailInput.value;
+        const password = passwordInput.value;
+        authError.textContent = '';
+        try {
+            await auth.createUserWithEmailAndPassword(email, password);
+        } catch (error) {
+            authError.textContent = 'Gagal Daftar: ' + error.message;
+        }
+    } else {
+        authError.textContent = 'Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.';
+        console.error("[AUTH ERROR] Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.");
     }
 }
 
 async function signIn() {
-    if (!auth) {
-        authError.textContent = 'Layanan otentikasi (auth) tidak tersedia. Silakan cek konsol.';
-        return console.error("[AUTH ERROR] Objek 'auth' tidak terinisialisasi.");
-    }
-    const email = emailInput.value;
-    const password = passwordInput.value;
-    authError.textContent = '';
-    console.log(`[DEBUG AUTH] Mencoba Masuk dengan email: ${email}`);
-
-    try {
-        await auth.signInWithEmailAndPassword(email, password);
-        console.log(`[DEBUG AUTH] Masuk Sukses!`);
-    } catch (error) {
-        authError.textContent = 'Gagal Masuk: ' + error.message;
-        console.error(`[DEBUG AUTH] Gagal Masuk: ${error.message}`, error);
+    if (db && auth && !auth.currentUser.email.startsWith('simulasi@')) {
+        // Logika Firebase sebenarnya
+        const email = emailInput.value;
+        const password = passwordInput.value;
+        authError.textContent = '';
+        try {
+            await auth.signInWithEmailAndPassword(email, password);
+        } catch (error) {
+            authError.textContent = 'Gagal Masuk: ' + error.message;
+        }
+    } else {
+        authError.textContent = 'Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.';
+        console.error("[AUTH ERROR] Pendaftaran & Login non-simulasi dinonaktifkan. Aplikasi berjalan dalam Mode SIMULASI.");
     }
 }
 
@@ -245,22 +368,21 @@ window.signOut = signOut;
 // BAGIAN 3: LISTENER PERUBAHAN STATUS OTENTIKASI
 // ------------------------------------
 
-// Fungsi untuk menangani otentikasi awal (custom token atau anonim)
+// Fungsi untuk menangani otentikasi awal (Custom Token atau Anonim)
 async function initialAuth() {
-    if (!auth) return;
+    if (!auth || auth.currentUser.email.startsWith('simulasi@')) {
+        // Abaikan di mode simulasi karena onAuthStateChanged sudah dipanggil secara manual
+        return;
+    }
     
-    // Gunakan token kustom jika ada
+    // Logika Firebase sebenarnya
     if (typeof __initial_auth_token !== 'undefined') {
         try {
-            console.log("[DEBUG AUTH] Mencoba Masuk dengan Custom Token...");
             await auth.signInWithCustomToken(__initial_auth_token);
         } catch (error) {
-            console.error("[DEBUG AUTH] Custom token sign-in GAGAL, beralih ke Anonim:", error);
             await auth.signInAnonymously();
         }
     } else {
-        // Jika tidak ada, masuk anonim
-        console.log("[DEBUG AUTH] Custom Token tidak tersedia, Masuk Anonim...");
         await auth.signInAnonymously();
     }
 }
@@ -281,8 +403,11 @@ function setupAuthListener() {
             if (authSection && mainApp) {
                 authSection.style.display = 'none';
                 mainApp.style.display = 'block';
-                // Tampilkan ID jika anonim (penting untuk debugging rules)
+                // Tampilkan ID jika anonim atau simulasi
                 userEmailSpan.textContent = user.email || `ID: ${currentUserId}`; 
+                if (user.email && user.email.startsWith('simulasi@')) {
+                    userEmailSpan.textContent += ' (Simulasi)';
+                }
                 authError.textContent = '';
             }
 
@@ -308,19 +433,21 @@ function setupAuthListener() {
         }
     });
     
-    // Panggil otentikasi awal segera setelah listener disiapkan
-    initialAuth(); 
+    // Panggil otentikasi awal (Hanya di mode NON-SIMULASI)
+    if (!auth.currentUser || !auth.currentUser.email || !auth.currentUser.email.startsWith('simulasi@')) {
+        initialAuth(); 
+    }
 }
 
 // ------------------------------------
 // BAGIAN 4: FUNGSI PENGELUARAN (CRUD)
 // ------------------------------------
 
-// Fungsi 4A: CREATE (Menambahkan Pengeluaran) - Listener di dalam fungsi
+// Fungsi 4A: CREATE (Menambahkan Pengeluaran)
 function setupExpenseFormListener() {
     if (expenseForm) {
-        expenseForm.removeEventListener('submit', handleExpenseSubmit); // Hapus listener lama jika ada
-        expenseForm.addEventListener('submit', handleExpenseSubmit); // Tambahkan listener baru
+        expenseForm.removeEventListener('submit', handleExpenseSubmit); 
+        expenseForm.addEventListener('submit', handleExpenseSubmit); 
     }
 }
 
@@ -328,9 +455,8 @@ async function handleExpenseSubmit(e) {
     e.preventDefault();
 
     if (!currentUserId || !db) {
-        console.error("[DEBUG DATA] Gagal menambah. Tidak ada user atau DB tidak terinisialisasi.");
-        authError.textContent = 'Silakan masuk (login) terlebih dahulu atau ulangi inisialisasi.';
-        return;
+        authError.textContent = 'Layanan tidak tersedia. Silakan masuk (login) terlebih dahulu.';
+        return console.error("[DEBUG DATA] Gagal menambah. Tidak ada user atau DB tidak terinisialisasi.");
     }
 
     const amount = parseInt(amountInput.value);
@@ -338,7 +464,6 @@ async function handleExpenseSubmit(e) {
     const description = descriptionInput.value;
     const date = new Date().toISOString().split('T')[0];
     
-    // Path Collection Privat
     const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
     const userExpensesCollection = db.collection(collectionPath);
     console.log(`[DEBUG DATA] Mencoba menambah data ke path: ${collectionPath}`);
@@ -351,11 +476,10 @@ async function handleExpenseSubmit(e) {
                 category: category,
                 description: description,
                 date: date,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                timestamp: db.firestore.FieldValue.serverTimestamp(),
                 userId: currentUserId 
             });
             console.log("[DEBUG DATA] Transaksi berhasil ditambahkan!");
-            // Reset form
             expenseForm.reset(); 
         } catch (error) {
             console.error("[DEBUG DATA] Error saat menambahkan dokumen: ", error);
@@ -369,17 +493,14 @@ async function handleExpenseSubmit(e) {
 // Fungsi 4B: READ (Memuat dan Menampilkan Pengeluaran)
 function loadExpenses() {
     if (!currentUserId || !expenseList || !totalAmountSpan || !db) {
-        console.log("[DEBUG DATA] loadExpenses dihentikan. Pre-requisite tidak terpenuhi.");
-        return;
+        return console.log("[DEBUG DATA] loadExpenses dihentikan. Pre-requisite tidak terpenuhi.");
     }
     
-    // Path Collection Privat
     const collectionPath = `/artifacts/${appId}/users/${currentUserId}/expenses`;
     const userExpensesCollection = db.collection(collectionPath);
     console.log(`[DEBUG DATA] Menyiapkan listener data dari path: ${collectionPath}`);
 
-
-    // Filter data berdasarkan userId pengguna yang login
+    // OrderBy hanya jika ini bukan mock, tetapi karena mock sekarang memiliki orderBy yang diabaikan, kita tetap bisa memanggilnya
     userExpensesCollection
         .orderBy('timestamp', 'desc')
         .onSnapshot(snapshot => {
@@ -425,7 +546,6 @@ function loadExpenses() {
             totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
         }, error => {
             console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
-            // Ini biasanya terjadi jika ada masalah di Aturan Keamanan (Security Rules)
             authError.textContent = 'Gagal memuat data. Kemungkinan masalah Izin (Security Rules). Cek konsol.';
         });
 
