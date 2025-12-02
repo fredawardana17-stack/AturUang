@@ -3,669 +3,1012 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aplikasi Pengeluaran Mudah - Firestore</title>
-    <!-- Tailwind CSS CDN -->
+    <title>Aplikasi Pengeluaran Keluarga</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js for Data Visualization -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script> 
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    
+    <!-- Firebase Configuration -->
+    <script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyCJbtY2yjemTTIa9Hkk1mJ9QpXJKTGB-tM",
+        authDomain: "pengeluaran-uang-e28b0.firebaseapp.com",
+        projectId: "pengeluaran-uang-e28b0",
+        storageBucket: "pengeluaran-uang-e28b0.firebasestorage.app",
+        messagingSenderId: "917431146016",
+        appId: "1:917431146016:web:c6b6eae1245af12be68ccd",
+        measurementId: "G-KGTZ9PZPM"
+    };
+    const appId = "expense-tracker";
+    </script>
+    
     <style>
-        /* Custom Styles for Aesthetics and Responsiveness */
-        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
-        .container { max-width: 600px; margin: 20px auto; padding: 20px; }
-        h1 { color: #1e3a8a; border-bottom: 2px solid #bfdbfe; padding-bottom: 5px; }
-        
-        /* Expense Item Style */
-        .expense-item { 
-            border-bottom: 1px solid #e5e7eb; 
-            padding: 1rem 0; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center;
-            flex-wrap: wrap; 
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+            background: linear-gradient(135deg, #f0f4f8 0%, #e6f0ff 100%);
+            min-height: 100vh;
         }
-        .expense-item > div {
-            padding: 4px 0;
+        .container { 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            padding: 20px; 
         }
-        .amount { 
-            font-weight: bold; 
-            color: #ef4444; /* Red color for expenses */
-            font-size: 1.1em;
-            text-align: right;
-        }
-        .auth-card, .app-card {
+        .card {
             background: white;
             padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 10px 15px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            margin-bottom: 24px;
+            border: 1px solid #e5e7eb;
+            transition: all 0.3s ease;
         }
-        /* Custom alert replacement */
-        .info-message {
-            background-color: #fef3c7;
-            color: #92400e;
-            padding: 12px;
+        .card:hover {
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
+        }
+        .expense-item {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        .expense-item:hover {
+            background-color: #f9fafb;
+        }
+        .amount {
+            font-weight: bold;
+            color: #dc2626;
+            font-size: 1.1em;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.2);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            color: white;
+            padding: 8px 16px;
             border-radius: 8px;
-            margin-top: 10px;
-            border: 1px solid #fde68a;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
         }
-        /* Style for Monthly Recap Table */
-        #monthly-recap table th:last-child {
-            width: 1%; 
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        .badge-food { background: #fef3c7; color: #92400e; }
+        .badge-transport { background: #dbeafe; color: #1e40af; }
+        .badge-shopping { background: #fce7f3; color: #be185d; }
+        .badge-entertainment { background: #dcfce7; color: #166534; }
+        .badge-health { background: #f3e8ff; color: #6b21a8; }
+        .badge-education { background: #ffedd5; color: #9a3412; }
+        .badge-other { background: #f3f4f6; color: #374151; }
+        .user-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-left: 8px;
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .monthly-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
+            transition: background-color 0.2s;
+        }
+        .monthly-row:hover {
+            background-color: #f8fafc;
         }
     </style>
-    
-    <!-- FIREBASE MODULAR SDK IMPORTS (v11) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Memasang fungsi-fungsi penting ke window agar dapat diakses oleh kode non-module (seperti event onclick)
-        window.firebaseModular = {
-            initializeApp,
-            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-            getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, orderBy, serverTimestamp, setLogLevel
-        };
-    </script> 
 </head>
-<body class="bg-gray-50 p-4">
+<body class="bg-gray-50">
+    <div class="container">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2 text-blue-800">💰 Pengeluaran Keluarga</h1>
+            <p class="text-gray-600">Catat dan pantau pengeluaran bersama keluarga</p>
+        </header>
 
-<div class="container">
-    <h1 class="text-3xl font-bold mb-6 text-center">💰 Catat Pengeluaran Harian</h1>
+        <!-- Status Alert -->
+        <div id="status-alert" class="hidden p-4 mb-6 rounded-lg"></div>
 
-    <!-- SYSTEM STATUS SECTION -->
-    <div id="status-alert" class="hidden p-3 mb-4 rounded-lg text-sm font-medium" role="alert"></div>
-
-    <!-- SECTION 1: USER START -->
-    <div id="auth-section" class="auth-card">
-        <h2 class="text-xl font-semibold mb-4 text-blue-700">Mulai Catat Pengeluaran</h2>
-        <p class="text-sm text-gray-600 mb-4">Aplikasi ini menggunakan otentikasi anonim untuk menyimpan data secara aman di cloud Anda.</p>
-        
-        <!-- User Name Input -->
-        <input type="text" id="user-name-input" placeholder="Masukkan Nama Anda (Contoh: Budi)" required class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-        
-        <div class="flex">
-            <!-- Panggil startAppAsUser saat tombol diklik -->
-            <button id="start-button" onclick="startAppAsUser()" class="flex-1 p-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150">Mulai & Akses Data Cloud</button>
-        </div>
-        <div id="auth-error" class="mt-4 text-red-600 text-sm font-medium"></div>
-    </div>
-    
-    <!-- SECTION 2: MAIN APPLICATION (Hidden before start) -->
-    <div id="main-app" class="app-card" style="display: none;">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-medium text-gray-700">Halo, <span id="user-display-name" class="font-bold text-blue-700">Pengguna</span>!</h3>
-            <button onclick="signOut()" class="p-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold text-sm rounded-lg transition duration-150">Keluar</button>
-        </div>
-        
-        <!-- Expense Form -->
-        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📝 Catat Pengeluaran</h2>
-        <form id="expense-form" class="space-y-3">
-            <input type="number" id="amount" placeholder="Jumlah (contoh: 50000)" required class="w-full p-3 border border-gray-300 rounded-lg">
-            <input type="text" id="description" placeholder="Deskripsi (contoh: Kopi dan Roti)" required class="w-full p-3 border border-gray-300 rounded-lg">
-            <select type="text" id="category" required class="w-full p-3 border border-gray-300 rounded-lg bg-white">
-                <option value="" disabled selected>Pilih Kategori</option>
-                <option value="Makanan">Makanan</option>
-                <option value="Transportasi">Transportasi</option>
-                <option value="Belanja">Belanja</option>
-                <option value="Hiburan">Hiburan</option>
-                <option value="Lainnya">Lainnya</option>
-            </select>
-            <button type="submit" class="w-full p-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition duration-150">Tambah Pengeluaran</button>
-        </form>
-        
-        <hr class="my-6">
-        
-        <!-- Summary & Global Export -->
-        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📊 Ringkasan & Ekspor</h2>
-        <p class="text-gray-700 text-lg mb-4">Total Pengeluaran: <span id="total-amount" class="font-bold text-red-600 ml-2">Rp 0</span></p>
-
-        <div class="flex flex-wrap gap-2 justify-start mb-4">
-            <!-- Global Raw Data Export Button -->
-            <button onclick="exportRawDataToCsv()" class="p-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition duration-150 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Export Semua Data Mentah
-            </button>
-            <!-- Global Monthly Recap Export Button -->
-            <button onclick="exportMonthlyRecapToCsv()" class="p-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Export Semua Rekap Bulanan
-            </button>
-        </div>
-
-        <hr class="my-6">
-
-        <!-- Monthly Recap and Chart Section -->
-        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📈 Grafik Pengeluaran Bulanan</h2>
-        <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <canvas id="monthlyChart"></canvas>
-        </div>
-
-        <hr class="my-6">
-        
-        <h2 class="text-xl font-semibold mb-3 text-gray-800 border-b pb-2">📅 Rekap Pengeluaran per Bulan</h2>
-        <div id="monthly-recap" class="mt-4">
-            <!-- Monthly recap table will be loaded here -->
-            <p class="text-gray-500">Memuat data rekap...</p>
-        </div>
-        
-        <hr class="my-6">
-        
-        <!-- Transaction History -->
-        <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">📜 Riwayat Transaksi</h2>
-        <div class="info-message">
-            Untuk **Edit** atau **Hapus**, tombol akan menampilkan instruksi di *Console* (F12) karena batasan keamanan di lingkungan ini. Anda perlu mengetik perintah `manualEdit()` atau `manualDelete()` di sana.
-        </div>
-        <div id="expense-list" class="mt-4">
-            <!-- Data will be loaded here by script.js -->
-        </div>
-    </div>
-</div>
-    
-<script>
-// ------------------------------------
-// SECTION 1: CONFIGURATION, INITIALIZATION, AND GLOBAL SCOPE
-// ------------------------------------
-let app, db, auth;
-let currentUserId = null;
-let currentUserName = null; 
-let allExpenseData = []; 
-let chartInstance = null; 
-let isFirebaseInitialized = false; 
-
-// DOM Variables
-let userNameInput, startButton, authError, authSection, mainApp, userDisplayNameSpan;
-let expenseForm, amountInput, descriptionInput, categoryInput, expenseList, totalAmountSpan;
-let monthlyChartCanvas, monthlyRecapDiv, statusAlertDiv;
-
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-// Ambil konfigurasi dari variabel global lingkungan.
-let firebaseConfig = {};
-
-// ------------------------------------
-// THE ENTIRE APPLICATION LOGIC RUNS AFTER THE DOM IS READY
-// ------------------------------------
-window.onload = async function() {
-    // 1. DOM Elements
-    userNameInput = document.getElementById('user-name-input');
-    startButton = document.getElementById('start-button');
-    authError = document.getElementById('auth-error');
-    authSection = document.getElementById('auth-section');
-    mainApp = document.getElementById('main-app');
-    userDisplayNameSpan = document.getElementById('user-display-name');
-    expenseForm = document.getElementById('expense-form');
-    amountInput = document.getElementById('amount');
-    descriptionInput = document.getElementById('description');
-    categoryInput = document.getElementById('category');
-    expenseList = document.getElementById('expense-list');
-    totalAmountSpan = document.getElementById('total-amount');
-    monthlyChartCanvas = document.getElementById('monthlyChart');
-    monthlyRecapDiv = document.getElementById('monthly-recap');
-    statusAlertDiv = document.getElementById('status-alert');
-
-
-    // 2. ROBUST FIREBASE CONFIGURATION CHECK AND INITIALIZATION
-    try {
-        if (!window.firebaseModular) {
-            throw new Error("Impor modular Firebase gagal. Pastikan CDN link diakses dengan benar.");
-        }
-        
-        // Coba parsing konfigurasi yang disuntikkan secara global
-        const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-        
-        // --- START MANUAL CONFIGURATION INJECTION POINT (SOLUSI) ---
-        // Jika Anda memiliki konfigurasi Firebase sendiri (dari console Google/Firebase)
-        // dan variabel lingkungan __firebase_config gagal dimuat, 
-        // Anda dapat menyalin objek konfigurasi Anda di sini. 
-        // HANYA UNCOMMENT JIKA CONFIG UTAMA GAGAL.
-        const MANUAL_FIREBASE_CONFIG = {
-            // apiKey: "AIzaSy...", 
-            // authDomain: "your-project-id.firebaseapp.com",
-            // projectId: "your-project-id", // <-- Ganti dengan project ID Anda
-            // storageBucket: "your-project-id.appspot.com",
-            // messagingSenderId: "...",
-            // appId: "1:..."
-        };
-        // --- END MANUAL CONFIGURATION INJECTION POINT ---
-        
-        let parsedConfig = {};
-        if (configString.trim() !== '' && configString.trim() !== '{}') {
-            try {
-                parsedConfig = JSON.parse(configString);
-            } catch (jsonError) {
-                console.error("[FATAL ERROR - CONFIG] Gagal Parsing JSON Konfigurasi Variabel Lingkungan:", configString, jsonError);
-                throw new Error(`Gagal mem-parsing string konfigurasi Firebase (bukan JSON valid).`);
-            }
-        }
-        
-        // Pilih konfigurasi: utamakan variabel global, fallback ke manual, jika keduanya kosong, throw error.
-        firebaseConfig = parsedConfig.projectId ? parsedConfig : (MANUAL_FIREBASE_CONFIG.projectId ? MANUAL_FIREBASE_CONFIG : {});
-
-        // VALIDASI KRITIS: Cek Project ID
-        if (!firebaseConfig || !firebaseConfig.projectId) {
-            console.error("[FATAL ERROR - CONFIG] Konfigurasi yang diparsing (ERROR):", parsedConfig);
-            // Ini adalah pesan error yang diperjelas
-            throw new Error(`"projectId" not provided. Variabel lingkungan '__firebase_config' kosong atau tidak valid. Jika Anda memiliki Firebase Config sendiri, masukkan secara manual di bagian 'MANUAL_FIREBASE_CONFIG' pada kode.`);
-        }
-        
-        console.log("[DEBUG CONFIG] Konfigurasi Firebase berhasil dimuat untuk Project ID:", firebaseConfig.projectId);
-
-        // Inisialisasi Aplikasi Firebase
-        app = window.firebaseModular.initializeApp(firebaseConfig);
-        db = window.firebaseModular.getFirestore(app);
-        auth = window.firebaseModular.getAuth(app);
-        window.firebaseModular.setLogLevel('debug');
-        isFirebaseInitialized = true;
-
-        // Inisialisasi Otentikasi
-        await initializeAuth(); 
-        
-    } catch (e) {
-        console.error(`[FATAL ERROR] Gagal menginisialisasi Firebase: ${e.message}`, e);
-        statusAlertDiv.classList.remove('hidden');
-        statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
-        statusAlertDiv.innerHTML = `❌ **Kesalahan Fatal:** Gagal menyambung ke database. Cek konsol (F12) untuk detail error: **${e.message.split('.')[0]}**.`;
-        return; 
-    }
-    
-    // 3. START AUTH LISTENER
-    setupAuthListener();
-};
-
-
-/**
- * Fungsi untuk menginisialisasi Otentikasi Awal
- * Digunakan untuk menangani __initial_auth_token
- */
-async function initializeAuth() {
-    if (!auth) {
-        console.error("[DEBUG AUTH] initializeAuth dipanggil tetapi objek auth belum siap.");
-        return;
-    }
-
-    // Menggunakan nama variabel yang benar sesuai instruksi
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
-    
-    try {
-        if (auth.currentUser) {
-            console.log("[DEBUG AUTH] Pengguna sudah terautentikasi.");
-            return;
-        }
-
-        if (initialAuthToken) {
-            // Menggunakan __initial_auth_token jika ada
-            await window.firebaseModular.signInWithCustomToken(auth, initialAuthToken);
-            console.log("[DEBUG AUTH] Custom Token Sign-in berhasil.");
-        } else {
-            // Gunakan Anonymous sign-in jika token tidak ada
-            await window.firebaseModular.signInAnonymously(auth);
-            console.log("[DEBUG AUTH] Anonymous Sign-in berhasil.");
-        }
-    } catch (error) {
-        console.error("Gagal melakukan Sign-in Awal:", error);
-        authError.textContent = `Gagal inisialisasi otentikasi: ${error.message}`;
-    }
-}
-
-
-// ------------------------------------
-// SECTION 2: AUTHENTICATION & APPLICATION SETUP FUNCTIONS
-// ------------------------------------
-
-function signOut() {
-    if (auth) {
-        auth.signOut();
-    }
-    // Clear local session data
-    sessionStorage.removeItem('currentUserName');
-    allExpenseData = []; // Clear global data
-    
-    // Clear display upon logout
-    if (expenseList && totalAmountSpan) {
-        expenseList.innerHTML = '';
-        totalAmountSpan.textContent = `Rp 0`;
-        if (chartInstance) chartInstance.destroy();
-        if (monthlyRecapDiv) monthlyRecapDiv.innerHTML = '<p class="text-gray-500">Memuat data rekap...</p>';
-    }
-    
-    // Re-show auth section
-    authSection.style.display = 'block';
-    mainApp.style.display = 'none';
-    userNameInput.value = '';
-
-    console.log("[DEBUG AUTH] User signed out.");
-}
-window.signOut = signOut;
-
-
-async function startAppAsUser() {
-    const name = userNameInput.value.trim();
-    if (!name) {
-        authError.textContent = 'Nama Pengguna harus diisi untuk memulai.';
-        return;
-    }
-
-    currentUserName = name;
-    sessionStorage.setItem('currentUserName', name);
-    authError.textContent = '';
-    
-    // Pastikan Auth tersedia
-    if (!auth || !isFirebaseInitialized) {
-        authError.textContent = 'Layanan Firebase belum siap. Tunggu sebentar atau refresh.';
-        return console.error("[DEBUG AUTH] Tombol diklik saat Firebase belum siap. Cek error konfigurasi di atas.");
-    }
-
-    // Jika Auth sudah selesai, langsung masuk
-    if (auth.currentUser) {
-        handleAuthSuccess(auth.currentUser);
-    } else {
-        // Jika belum selesai (race condition), coba panggil initializeAuth lagi
-        await initializeAuth(); 
-        console.log("[DEBUG AUTH] Auth sedang dalam proses. Menunggu onAuthStateChanged...");
-        statusAlertDiv.classList.remove('hidden');
-        statusAlertDiv.classList.add('bg-blue-100', 'text-blue-800');
-        statusAlertDiv.innerHTML = '⏳ **Memproses Login:** Sedang menunggu koneksi aman ke Cloud...';
-    }
-}
-window.startAppAsUser = startAppAsUser;
-
-
-function handleAuthSuccess(user) {
-    // Sembunyikan pesan status loading/error jika ada
-    statusAlertDiv.classList.add('hidden');
-    
-    currentUserId = user.uid;
-    console.log(`[DEBUG AUTH] Status: LOGGED IN. UID: ${currentUserId}`);
-
-    authSection.style.display = 'none';
-    mainApp.style.display = 'block';
-    
-    // Ambil nama dari sessionStorage, jika ada
-    const storedName = sessionStorage.getItem('currentUserName');
-    currentUserName = storedName || 'Pengguna Anonim'; 
-    userDisplayNameSpan.textContent = currentUserName; 
-    
-    setupExpenseFormListener();
-    loadExpenses();
-}
-
-function setupAuthListener() {
-    if (!isFirebaseInitialized || !auth) return;
-    
-    window.firebaseModular.onAuthStateChanged(auth, (user) => {
-        currentUserName = sessionStorage.getItem('currentUserName');
-        
-        if (user) {
-            // User terautentikasi. Lanjutkan ke aplikasi utama jika nama sudah diisi.
-            if (currentUserName) {
-                handleAuthSuccess(user);
-            } else {
-                // User terotentikasi, tapi belum mengisi nama di UI. Tetap di Auth screen.
-                authSection.style.display = 'block';
-                mainApp.style.display = 'none';
-                currentUserId = user.uid; 
-            }
-        } else {
-            // User logout atau belum login
-            currentUserId = null;
-            currentUserName = null;
-            allExpenseData = [];
-            authSection.style.display = 'block';
-            mainApp.style.display = 'none';
-            userNameInput.value = '';
-        }
-    });
-}
-
-
-// ------------------------------------
-// SECTION 3: EXPENSE FUNCTIONS (CRUD & RENDER)
-// ------------------------------------
-
-// Helper to Render the entire UI
-function renderUI(data) {
-    allExpenseData = data; // Update global data
-    renderExpenseList(data);
-    renderChartsAndSummary(data);
-}
-
-// Helper to Render the Transaction List
-function renderExpenseList(data) {
-    expenseList.innerHTML = '';
-    let total = 0;
-    
-    if (data.length === 0) {
-        expenseList.innerHTML = '<p class="text-gray-500 text-center py-4">Belum ada transaksi yang dicatat.</p>';
-    }
-    
-    data.forEach(item => {
-        const itemAmount = typeof item.amount === 'number' ? item.amount : 0;
-        total += itemAmount;
-        const docId = item.id; 
-        
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'expense-item';
-        
-        // --- ADD USER NAME DISPLAY ---
-        const userNameDisplay = item.userName ? `<span class="text-xs font-semibold text-indigo-600 mr-2">[${item.userName}]</span>` : '';
-
-        itemDiv.innerHTML = `
-            <div style="flex-grow: 1; max-width: 70%; min-width: 200px;">
-                ${userNameDisplay}
-                <strong class="text-gray-900">${item.description}</strong> 
-                <span class="text-sm text-gray-500">(${item.category}) - ${item.date}</span>
+        <!-- SECTION 1: LOGIN -->
+        <div id="auth-section" class="card">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span class="text-2xl">👨‍👩‍👧</span>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800">Masuk ke Aplikasi</h2>
+                <p class="text-gray-600 mt-2">
+                    <strong>PENTING:</strong> Gunakan nama yang sesuai dengan anggota keluarga<br>
+                    <span class="text-sm">(Nama yang sama = bisa edit data yang sama)</span>
+                </p>
             </div>
-            <div class="amount flex-none mr-4">Rp ${itemAmount.toLocaleString('id-ID')}</div>
-            <div class="flex space-x-2 flex-none mt-2 sm:mt-0">
-                <button onclick="window.handleEditClick('${docId}', ${itemAmount}, '${item.category}', '${item.description}')" 
-                        class="p-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition duration-150">
-                    Edit
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-gray-700 mb-2 font-medium">Nama Anda</label>
+                    <input type="text" 
+                           id="user-name-input" 
+                           placeholder="Contoh: Budi, Sari, dll" 
+                           class="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                           required>
+                    <p class="text-xs text-gray-500 mt-1">
+                        ⚠️ Gunakan nama yang benar. Siapapun dengan nama ini bisa edit data Anda.
+                    </p>
+                </div>
+                
+                <div id="auth-error" class="text-red-600 text-sm font-medium hidden"></div>
+                
+                <button id="start-button" 
+                        class="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition">
+                    🚀 Mulai Sekarang
                 </button>
-                <button onclick="window.handleDeleteClick('${docId}')" 
-                        class="p-2 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition duration-150">
-                    Hapus
-                </button>
+                
+                <div class="text-center text-sm text-gray-500 mt-4">
+                    <p>✅ <strong>Edit berdasarkan nama:</strong> Siapapun dengan nama yang sama bisa edit</p>
+                    <p>👁️ <strong>Lihat semua:</strong> Semua anggota bisa melihat semua data</p>
+                    <p>🔓 <strong>Ganti user:</strong> Klik "Ganti User" untuk login dengan nama lain</p>
+                </div>
             </div>
-        `;
-        
-        expenseList.appendChild(itemDiv);
-    });
-    
-    totalAmountSpan.textContent = `Rp ${total.toLocaleString('id-ID')}`;
-}
+        </div>
 
+        <!-- SECTION 2: MAIN APPLICATION -->
+        <div id="main-app" class="hidden">
+            <!-- User Info -->
+            <div class="card mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                            <span class="text-lg">👤</span>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-800">Halo, <span id="user-display-name" class="text-blue-600">Pengguna</span>!</h3>
+                            <p class="text-sm text-gray-500">ID: <span id="user-id" class="font-mono text-xs"></span></p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="export-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            📥 Export
+                        </button>
+                        <button id="logout-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                            🔓 Ganti User
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Quick Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div class="bg-blue-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">Total Keluarga</p>
+                        <p class="text-xl font-bold text-blue-700" id="total-family">Rp 0</p>
+                    </div>
+                    <div class="bg-green-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">Total Transaksi</p>
+                        <p class="text-xl font-bold text-green-700" id="total-transactions">0</p>
+                    </div>
+                    <div class="bg-purple-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">Bulan Ini</p>
+                        <p class="text-xl font-bold text-purple-700" id="monthly-total">Rp 0</p>
+                    </div>
+                    <div class="bg-yellow-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">Anggota Aktif</p>
+                        <p class="text-xl font-bold text-yellow-700" id="active-users">1</p>
+                    </div>
+                </div>
+            </div>
 
-// Function 3A: CREATE (Add Expense)
-function setupExpenseFormListener() {
-    if (expenseForm) {
-        expenseForm.removeEventListener('submit', handleExpenseSubmit); 
-        expenseForm.addEventListener('submit', handleExpenseSubmit); 
-    }
-}
+            <!-- Tabs -->
+            <div class="flex gap-2 mb-6">
+                <button class="tab active" data-tab="form">📝 Tambah</button>
+                <button class="tab" data-tab="history">📜 Riwayat</button>
+                <button class="tab" data-tab="charts">📈 Grafik</button>
+                <button class="tab" data-tab="summary">📊 Ringkasan</button>
+            </div>
 
-async function handleExpenseSubmit(e) {
-    e.preventDefault();
+            <!-- Tab Content: Form -->
+            <div id="tab-form" class="tab-content active card">
+                <h2 class="text-xl font-bold mb-4">📝 Catat Pengeluaran Baru</h2>
+                <form id="expense-form" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2 font-medium">Jumlah (Rp)</label>
+                            <input type="number" id="amount" placeholder="50000" min="1" required class="w-full p-3 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2 font-medium">Kategori</label>
+                            <select id="category" required class="w-full p-3 border rounded-lg">
+                                <option value="" disabled selected>Pilih Kategori</option>
+                                <option value="Makanan">🍽️ Makanan</option>
+                                <option value="Transportasi">🚗 Transportasi</option>
+                                <option value="Belanja">🛍️ Belanja</option>
+                                <option value="Hiburan">🎬 Hiburan</option>
+                                <option value="Kesehatan">🏥 Kesehatan</option>
+                                <option value="Pendidikan">📚 Pendidikan</option>
+                                <option value="Tagihan">💡 Tagihan</option>
+                                <option value="Lainnya">📦 Lainnya</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-medium">Deskripsi</label>
+                        <input type="text" id="description" placeholder="Makan siang, Bensin, Listrik, dll." required class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2 font-medium">Tanggal</label>
+                            <input type="date" id="date-input" class="w-full p-3 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2 font-medium">Catatan</label>
+                            <input type="text" id="notes" placeholder="Opsional: tambah catatan" class="w-full p-3 border rounded-lg">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full p-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                        💾 Simpan Pengeluaran
+                    </button>
+                </form>
+            </div>
 
-    if (!currentUserId || !currentUserName || !db) {
-        authError.textContent = 'Layanan tidak tersedia. Silakan masuk (login) terlebih dahulu dan isi Nama Pengguna.';
-        return console.error("[DEBUG DATA] Gagal menambahkan. Tidak ada pengguna terotentikasi atau nama/db.");
-    }
+            <!-- Tab Content: History -->
+            <div id="tab-history" class="tab-content">
+                <div class="card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">📜 Riwayat Pengeluaran</h2>
+                        <div class="text-sm text-gray-500">
+                            Total: <span id="expense-count">0</span> transaksi
+                        </div>
+                    </div>
+                    <div id="expense-list">
+                        <p class="text-center text-gray-500 py-8">Belum ada transaksi</p>
+                    </div>
+                </div>
+            </div>
 
-    const amount = parseInt(amountInput.value);
-    const category = categoryInput.value;
-    const description = descriptionInput.value;
-    const date = new Date().toISOString().split('T')[0];
-    const timestamp = window.firebaseModular.serverTimestamp(); 
+            <!-- Tab Content: Charts -->
+            <div id="tab-charts" class="tab-content">
+                <div class="card mb-6">
+                    <h2 class="text-xl font-bold mb-4">📈 Grafik Pengeluaran Bulanan</h2>
+                    <div class="chart-container">
+                        <canvas id="monthly-chart"></canvas>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="card">
+                        <h2 class="text-xl font-bold mb-4">📊 Pengeluaran per Anggota</h2>
+                        <div class="chart-container">
+                            <canvas id="user-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2 class="text-xl font-bold mb-4">🏷️ Pengeluaran per Kategori</h2>
+                        <div class="chart-container">
+                            <canvas id="category-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-    const newExpense = {
-        amount: amount,
-        category: category,
-        description: description,
-        date: date,
-        timestamp: timestamp, 
-        userId: currentUserId,
-        userName: currentUserName 
+            <!-- Tab Content: Summary -->
+            <div id="tab-summary" class="tab-content">
+                <div class="card mb-6">
+                    <h2 class="text-xl font-bold mb-4">📅 Rekap Bulanan</h2>
+                    <div id="monthly-recap">
+                        <p class="text-gray-500 text-center py-4">Memuat data rekap...</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2 class="text-xl font-bold mb-4">💾 Export Data</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <button id="export-all-btn" class="p-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            📄 Export Semua Data
+                        </button>
+                        <button id="export-monthly-btn" class="p-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                            📊 Export Rekap Bulanan
+                        </button>
+                        <button id="export-mine-btn" class="p-4 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            👤 Export Data Saya
+                        </button>
+                        <button id="print-btn" class="p-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                            🖨️ Cetak Laporan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-8 text-center text-gray-500 text-sm">
+            <p>👨‍👩‍👧 <strong>Aplikasi Pengeluaran Keluarga</strong> - Edit berdasarkan Nama</p>
+            <p class="mt-1">Semua anggota bisa melihat, siapapun dengan NAMA YANG SAMA bisa edit</p>
+        </footer>
+    </div>
+
+    <!-- FIREBASE SDK & APP LOGIC -->
+    <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { 
+        getAuth, 
+        signInAnonymously, 
+        onAuthStateChanged,
+        signOut 
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { 
+        getFirestore,
+        collection,
+        addDoc,
+        query,
+        orderBy,
+        onSnapshot,
+        serverTimestamp,
+        deleteDoc,
+        doc,
+        updateDoc,
+        getDocs
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // ============================================
+    // GLOBAL VARIABLES
+    // ============================================
+    let currentUser = null;
+    let currentUserName = null;
+    let currentUserId = null; // Custom ID based on name
+    let allExpenses = []; // Semua pengeluaran keluarga
+    let db = null;
+    let auth = null;
+    let chartInstances = {
+        monthly: null,
+        user: null,
+        category: null
     };
 
-    if (amount > 0 && category && description) {
-        // Path collection: /artifacts/{appId}/users/{currentUserId}/expenses
-        const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
-        try {
-            await window.firebaseModular.addDoc(collectionRef, newExpense); 
-            console.log("[DEBUG DATA] Transaksi berhasil ditambahkan ke Firestore!");
-        } catch (error) {
-            console.error("[DEBUG DATA] Error saat menambahkan dokumen: ", error);
-            authError.textContent = 'Gagal menambah transaksi ke Cloud. Cek konsol.';
+    // ============================================
+    // UTILITY FUNCTIONS
+    // ============================================
+    // Generate consistent user ID from name
+    function generateUserIdFromName(name) {
+        // Simple hash function for consistent ID
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            const char = name.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
         }
-
-        expenseForm.reset(); 
-    } else {
-        console.log("[DEBUG DATA] Peringatan: Pastikan semua kolom diisi dengan benar.");
+        // Create user_ prefix + hexadecimal hash
+        return 'user_' + Math.abs(hash).toString(16).substring(0, 12);
     }
-}
 
-
-// Function 3B: READ (Load and Display Expenses)
-function loadExpenses() {
-    if (!currentUserId || !db) {
-        return console.log("[DEBUG DATA] loadExpenses dihentikan. Prasyarat tidak terpenuhi.");
-    }
-    
-    // Path collection: /artifacts/{appId}/users/{currentUserId}/expenses
-    const collectionRef = window.firebaseModular.collection(db, `/artifacts/${appId}/users/${currentUserId}/expenses`);
-    const q = window.firebaseModular.query(collectionRef, window.firebaseModular.orderBy('timestamp', 'desc'));
-    
-    // Listen for real-time changes
-    window.firebaseModular.onSnapshot(q, (snapshot) => {
-            console.log(`[DEBUG DATA] Snapshot diterima. Jumlah dokumen: ${snapshot.size}`);
-            const data = [];
-            snapshot.forEach(doc => {
-                const item = doc.data();
-                // Konversi Timestamp ke milidetik jika ada
-                const itemTimestamp = item.timestamp && typeof item.timestamp.toDate === 'function' ? item.timestamp.toDate().getTime() : Date.now(); 
-                data.push({ 
-                    ...item, 
-                    id: doc.id,
-                    timestamp: itemTimestamp,
+    // ============================================
+    // FIREBASE INITIALIZATION
+    // ============================================
+    try {
+        const app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+        
+        console.log("✅ Firebase initialized for project:", firebaseConfig.projectId);
+        
+        // Setup auth listener (anonymous auth tetap untuk Firestore access)
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                console.log("👤 Firebase User authenticated:", user.uid);
+                
+                // Check if we have saved name in localStorage
+                const savedName = localStorage.getItem('familyUserName');
+                const savedUserId = localStorage.getItem('familyUserId');
+                
+                if (savedName && savedUserId) {
+                    currentUserName = savedName;
+                    currentUserId = savedUserId;
+                    showMainApp();
+                    loadAllExpenses();
+                }
+            } else {
+                console.log("👤 No user signed in");
+                // Auto login anonymous (required for Firestore)
+                signInAnonymously(auth).then(() => {
+                    console.log("✅ Auto anonymous login successful");
+                }).catch(error => {
+                    console.error("❌ Auto login failed:", error);
                 });
-            });
-            // Sorting di client side sebagai fallback/penyempurna
-            data.sort((a, b) => b.timestamp - a.timestamp); 
-            renderUI(data); // Panggil helper untuk render
-        }, error => {
-            console.error("[DEBUG DATA] Error saat membaca data (onSnapshot): ", error);
-            // Show error in UI
-            statusAlertDiv.classList.remove('hidden');
-            statusAlertDiv.classList.add('bg-red-100', 'text-red-800');
-            statusAlertDiv.innerHTML = `❌ **Kesalahan Data:** Gagal memuat data dari Cloud Firestore. Cek konsol untuk detail teknis.`;
+            }
         });
-}
+        
+    } catch (error) {
+        console.error("❌ Firebase initialization failed:", error);
+        showStatus("Gagal menghubungkan ke database: " + error.message, "error");
+    }
 
-
-// ------------------------------------
-// SECTION 4: VISUALIZATION AND MONTHLY RECAP
-// ------------------------------------
-// (Fungsi-fungsi ini tidak diubah)
-
-function renderChartsAndSummary(data) {
-    if (!monthlyChartCanvas || !monthlyRecapDiv) return;
-
-    // 1. Aggregate Data per Month
-    const monthlySummary = data.reduce((acc, expense) => {
-        const expenseDate = expense.date;
-        if (typeof expenseDate === 'string' && expenseDate.length >= 7) {
-            const yearMonth = expenseDate.substring(0, 7); 
-            acc[yearMonth] = (acc[yearMonth] || 0) + expense.amount;
+    // ============================================
+    // DOM ELEMENTS & EVENT LISTENERS
+    // ============================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set today's date
+        const dateInput = document.getElementById('date-input');
+        if (dateInput) {
+            dateInput.value = new Date().toISOString().split('T')[0];
         }
-        return acc;
-    }, {});
-    
-    // Convert object to sorted array (latest on top)
-    const sortedMonths = Object.keys(monthlySummary).sort().reverse();
-    
-    const chartLabels = [];
-    const chartData = [];
-    
-    // Prepare HTML for the recap table
-    let recapHTML = `
-        <div class="overflow-x-auto rounded-lg shadow-md">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-blue-100">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-blue-800 uppercase tracking-wider">Bulan</th>
-                        <th class="px-6 py-3 text-right text-xs font-semibold text-blue-800 uppercase tracking-wider">Total Pengeluaran</th>
-                        <th class="px-6 py-3 text-right text-xs font-semibold text-blue-800 uppercase tracking-wider">Export</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-    `;
+        
+        // Start button
+        const startButton = document.getElementById('start-button');
+        if (startButton) {
+            startButton.addEventListener('click', startApp);
+        }
+        
+        // Logout button
+        const logoutButton = document.getElementById('logout-btn');
+        if (logoutButton) {
+            logoutButton.addEventListener('click', signOutUser);
+        }
+        
+        // Export buttons
+        document.getElementById('export-btn')?.addEventListener('click', exportAllData);
+        document.getElementById('export-all-btn')?.addEventListener('click', exportAllData);
+        document.getElementById('export-monthly-btn')?.addEventListener('click', exportMonthlyData);
+        document.getElementById('export-mine-btn')?.addEventListener('click', exportMyData);
+        document.getElementById('print-btn')?.addEventListener('click', printReport);
+        
+        // Expense form
+        const expenseForm = document.getElementById('expense-form');
+        if (expenseForm) {
+            expenseForm.addEventListener('submit', handleExpenseSubmit);
+        }
+        
+        // Tab switching
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabName = this.getAttribute('data-tab');
+                switchTab(tabName);
+            });
+        });
+    });
 
-    if (sortedMonths.length === 0) {
-        recapHTML = '<p class="text-gray-500 text-center py-4">Belum ada data untuk membuat rekap bulanan.</p>';
-        monthlyRecapDiv.innerHTML = recapHTML;
-    } else {
-        sortedMonths.forEach(ym => {
-            const amount = monthlySummary[ym];
-            // Format month: e.g., "December 2025"
-            const displayMonth = new Date(ym + '-01').toLocaleString('id-ID', { year: 'numeric', month: 'long' });
+    // ============================================
+    // AUTH FUNCTIONS (CUSTOM BY NAME)
+    // ============================================
+    async function startApp() {
+        const nameInput = document.getElementById('user-name-input');
+        const name = nameInput.value.trim();
+        
+        if (!name) {
+            showAuthError("Harap masukkan nama Anda");
+            return;
+        }
+        
+        if (!currentUser) {
+            showAuthError("Menunggu koneksi ke server...");
+            return;
+        }
+        
+        // Generate user ID dari nama (konsisten untuk nama yang sama)
+        currentUserName = name;
+        currentUserId = generateUserIdFromName(name);
+        
+        console.log(`👤 User: ${currentUserName}, Generated ID: ${currentUserId}`);
+        
+        // Simpan di localStorage
+        localStorage.setItem('familyUserName', currentUserName);
+        localStorage.setItem('familyUserId', currentUserId);
+        
+        showMainApp();
+        loadAllExpenses();
+    }
+
+    async function signOutUser() {
+        try {
+            await signOut(auth);
+            localStorage.removeItem('familyUserName');
+            localStorage.removeItem('familyUserId');
             
-            // Data for Chart (order needs to be reversed for chronological chart)
-            chartLabels.unshift(displayMonth);
-            chartData.unshift(amount);
+            // Reset UI
+            document.getElementById('auth-section').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('user-name-input').value = '';
             
-            // Data for Recap Table
-            recapHTML += `
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${displayMonth}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-bold">Rp ${amount.toLocaleString('id-ID')}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right">
-                        <button onclick="exportSpecificMonthToCsv('${ym}', '${displayMonth}')" 
-                                class="p-1.5 bg-green-500 hover:bg-green-600 text-white text-xs rounded transition duration-150 flex items-center justify-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                        </button>
-                    </td>
-                </tr>
+            // Clear data
+            allExpenses = [];
+            currentUserName = null;
+            currentUserId = null;
+            
+            // Destroy charts
+            Object.values(chartInstances).forEach(chart => {
+                if (chart) {
+                    chart.destroy();
+                }
+            });
+            chartInstances = { monthly: null, user: null, category: null };
+            
+            console.log("✅ User signed out successfully");
+            showStatus("Berhasil keluar, silakan login dengan nama yang sesuai", "success");
+            
+        } catch (error) {
+            console.error("❌ Sign out error:", error);
+            showStatus("Gagal keluar: " + error.message, "error");
+        }
+    }
+
+    function showMainApp() {
+        document.getElementById('auth-section').classList.add('hidden');
+        document.getElementById('main-app').classList.remove('hidden');
+        document.getElementById('user-display-name').textContent = currentUserName;
+        document.getElementById('user-id').textContent = currentUserId.substring(0, 8) + '...';
+        clearAuthError();
+    }
+
+    function showAuthError(message) {
+        const errorDiv = document.getElementById('auth-error');
+        errorDiv.textContent = message;
+        errorDiv.classList.remove('hidden');
+    }
+
+    function clearAuthError() {
+        const errorDiv = document.getElementById('auth-error');
+        errorDiv.textContent = '';
+        errorDiv.classList.add('hidden');
+    }
+
+    // ============================================
+    // EXPENSE FUNCTIONS
+    // ============================================
+    async function handleExpenseSubmit(e) {
+        e.preventDefault();
+        
+        if (!currentUser || !currentUserName) {
+            showStatus("Harap login terlebih dahulu", "error");
+            return;
+        }
+        
+        const amount = parseInt(document.getElementById('amount').value);
+        const description = document.getElementById('description').value.trim();
+        const category = document.getElementById('category').value;
+        const date = document.getElementById('date-input').value || new Date().toISOString().split('T')[0];
+        const notes = document.getElementById('notes').value.trim();
+        
+        if (!amount || amount < 1) {
+            showStatus("Jumlah tidak valid", "error");
+            return;
+        }
+        
+        if (!description) {
+            showStatus("Deskripsi harus diisi", "error");
+            return;
+        }
+        
+        if (!category) {
+            showStatus("Pilih kategori", "error");
+            return;
+        }
+        
+        try {
+            const expenseData = {
+                amount: amount,
+                description: description,
+                category: category,
+                date: date,
+                notes: notes,
+                userName: currentUserName,
+                userId: currentUserId, // ← Pakai custom ID dari nama
+                timestamp: serverTimestamp()
+            };
+            
+            console.log("💾 Saving expense with custom ID:", expenseData);
+            
+            // Simpan ke collection keluarga
+            const expensesRef = collection(db, "familyExpenses");
+            await addDoc(expensesRef, expenseData);
+            
+            // Reset form
+            e.target.reset();
+            document.getElementById('date-input').value = new Date().toISOString().split('T')[0];
+            
+            showStatus("✅ Pengeluaran berhasil disimpan!", "success");
+            
+        } catch (error) {
+            console.error("❌ Error saving expense:", error);
+            showStatus("Gagal menyimpan: " + error.message, "error");
+        }
+    }
+
+    // ============================================
+    // LOAD ALL EXPENSES
+    // ============================================
+    function loadAllExpenses() {
+        if (!currentUser || !db) {
+            console.log("⚠️ Waiting for user or db...");
+            return;
+        }
+        
+        console.log("🔄 Loading all expenses...");
+        
+        try {
+            const expensesRef = collection(db, "familyExpenses");
+            const q = query(expensesRef, orderBy("timestamp", "desc"));
+            
+            const unsubscribe = onSnapshot(q, 
+                (snapshot) => {
+                    console.log("📊 Snapshot received:", snapshot.size, "docs");
+                    
+                    allExpenses = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        allExpenses.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    });
+                    
+                    console.log(`✅ Loaded ${allExpenses.length} expenses`);
+                    
+                    // Update UI
+                    updateUI();
+                    
+                },
+                (error) => {
+                    console.error("❌ Error in expenses listener:", error.code, error.message);
+                    
+                    if (error.code === 'failed-precondition') {
+                        // Collection mungkin belum ada atau butuh index
+                        showStatus("Database perlu setup. Coba tambah data pertama.", "warning");
+                    } else if (error.code === 'permission-denied') {
+                        showStatus("Akses ditolak. Periksa Firestore Rules.", "error");
+                    } else {
+                        showStatus("Gagal memuat data: " + error.message, "error");
+                    }
+                }
+            );
+            
+            // Simpan unsubscribe function
+            window.expensesUnsubscribe = unsubscribe;
+            
+        } catch (error) {
+            console.error("❌ Error setting up listener:", error);
+            showStatus("Gagal mengakses database", "error");
+        }
+    }
+
+    function updateUI() {
+        renderExpenses(allExpenses);
+        updateStats(allExpenses);
+        renderCharts(allExpenses);
+        renderMonthlyRecap(allExpenses);
+        
+        // Update counter
+        document.getElementById('expense-count').textContent = allExpenses.length;
+    }
+
+    // ============================================
+    // RENDER FUNCTIONS
+    // ============================================
+    function renderExpenses(expenses) {
+        const listDiv = document.getElementById('expense-list');
+        
+        if (expenses.length === 0) {
+            listDiv.innerHTML = '<p class="text-center text-gray-500 py-8">Belum ada transaksi</p>';
+            return;
+        }
+        
+        let html = '';
+        expenses.forEach(exp => {
+            const date = new Date(exp.date).toLocaleDateString('id-ID', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric'
+            });
+            
+            const categoryClass = getCategoryClass(exp.category);
+            const isOwner = exp.userId === currentUserId; // ← Bandingkan dengan custom ID
+            
+            html += `
+                <div class="expense-item">
+                    <div class="flex-1">
+                        <div class="flex items-center mb-1">
+                            <span class="${categoryClass} badge">${exp.category}</span>
+                            <span class="text-sm text-gray-500">${date}</span>
+                            <span class="user-badge">${exp.userName || 'Anonim'}</span>
+                            ${isOwner ? '<span class="text-xs text-green-600 ml-2">(Milik Anda)</span>' : ''}
+                        </div>
+                        <div class="font-medium">${exp.description}</div>
+                        ${exp.notes ? `<div class="text-sm text-gray-500 mt-1">${exp.notes}</div>` : ''}
+                    </div>
+                    <div class="text-right">
+                        <div class="amount">Rp ${exp.amount.toLocaleString('id-ID')}</div>
+                        ${isOwner ? `
+                            <div class="flex gap-2 mt-2">
+                                <button onclick="editExpense('${exp.id}')" 
+                                        class="text-sm text-blue-600 hover:text-blue-800">
+                                    ✏️ Edit
+                                </button>
+                                <button onclick="deleteExpense('${exp.id}', '${exp.description}')" 
+                                        class="text-sm text-red-600 hover:text-red-800">
+                                    🗑️ Hapus
+                                </button>
+                            </div>
+                        ` : `
+                            <div class="text-xs text-gray-400 mt-2">
+                                Hanya <span class="font-medium">${exp.userName}</span> yang bisa edit
+                            </div>
+                        `}
+                    </div>
+                </div>
             `;
         });
         
-        recapHTML += `</tbody></table></div>`;
-        monthlyRecapDiv.innerHTML = recapHTML;
+        listDiv.innerHTML = html;
     }
 
-
-    // 2. Render Chart
-    if (chartInstance) {
-        chartInstance.destroy(); // Destroy old instance
+    function updateStats(expenses) {
+        // Total keluarga
+        const totalFamily = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        
+        // Current month total
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const monthlyTotal = expenses
+            .filter(exp => exp.date && exp.date.startsWith(currentMonth))
+            .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        
+        // Count unique users
+        const uniqueUsers = [...new Set(expenses.map(exp => exp.userName).filter(Boolean))];
+        
+        document.getElementById('total-family').textContent = `Rp ${totalFamily.toLocaleString('id-ID')}`;
+        document.getElementById('total-transactions').textContent = expenses.length;
+        document.getElementById('monthly-total').textContent = `Rp ${monthlyTotal.toLocaleString('id-ID')}`;
+        document.getElementById('active-users').textContent = uniqueUsers.length || 1;
     }
-    
-    if (sortedMonths.length > 0) {
-        monthlyChartCanvas.style.display = 'block';
-        // Set fixed height for chart to prevent CLS
-        monthlyChartCanvas.style.height = '300px'; 
 
-        const ctx = monthlyChartCanvas.getContext('2d');
-        chartInstance = new Chart(ctx, {
+    function getCategoryClass(category) {
+        switch(category) {
+            case 'Makanan': return 'badge-food';
+            case 'Transportasi': return 'badge-transport';
+            case 'Belanja': return 'badge-shopping';
+            case 'Hiburan': return 'badge-entertainment';
+            case 'Kesehatan': return 'badge-health';
+            case 'Pendidikan': return 'badge-education';
+            case 'Tagihan': return 'badge-transport';
+            default: return 'badge-other';
+        }
+    }
+
+    // ============================================
+    // EDIT/DELETE FUNCTIONS
+    // ============================================
+    window.editExpense = function(id) {
+        const expense = allExpenses.find(exp => exp.id === id);
+        if (!expense) return;
+        
+        // Cek apakah user adalah pemilik
+        if (expense.userId !== currentUserId) {
+            showStatus(`❌ Anda tidak bisa mengedit data milik ${expense.userName}`, "error");
+            return;
+        }
+        
+        // Fill form
+        document.getElementById('amount').value = expense.amount;
+        document.getElementById('description').value = expense.description;
+        document.getElementById('category').value = expense.category;
+        document.getElementById('date-input').value = expense.date;
+        document.getElementById('notes').value = expense.notes || '';
+        
+        // Change form mode
+        const form = document.getElementById('expense-form');
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitBtn.textContent = '💾 Update Pengeluaran';
+        submitBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        submitBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        
+        form.dataset.editingId = id;
+        
+        // Switch to form tab
+        switchTab('form');
+        
+        showStatus("✏️ Mode edit aktif untuk data Anda", "info");
+    };
+
+    window.deleteExpense = async function(id, description) {
+        const expense = allExpenses.find(exp => exp.id === id);
+        if (!expense) return;
+        
+        // Cek apakah user adalah pemilik
+        if (expense.userId !== currentUserId) {
+            showStatus(`❌ Anda tidak bisa menghapus data milik ${expense.userName}`, "error");
+            return;
+        }
+        
+        if (!confirm(`Hapus pengeluaran "${description}"?`)) return;
+        
+        try {
+            const expenseRef = doc(db, "familyExpenses", id);
+            await deleteDoc(expenseRef);
+            showStatus("🗑️ Pengeluaran berhasil dihapus", "success");
+        } catch (error) {
+            console.error("❌ Error deleting expense:", error);
+            showStatus("Gagal menghapus: " + error.message, "error");
+        }
+    };
+
+    // Handle form for both add and update
+    document.getElementById('expense-form')?.addEventListener('submit', async function(e) {
+        if (this.dataset.editingId) {
+            e.preventDefault();
+            await updateExpense(this.dataset.editingId);
+        }
+    });
+
+    async function updateExpense(id) {
+        const expense = allExpenses.find(exp => exp.id === id);
+        if (!expense || expense.userId !== currentUserId) {
+            showStatus("❌ Tidak bisa mengedit data ini", "error");
+            return;
+        }
+        
+        const amount = parseInt(document.getElementById('amount').value);
+        const description = document.getElementById('description').value.trim();
+        const category = document.getElementById('category').value;
+        const date = document.getElementById('date-input').value;
+        const notes = document.getElementById('notes').value.trim();
+        
+        try {
+            const expenseRef = doc(db, "familyExpenses", id);
+            await updateDoc(expenseRef, {
+                amount: amount,
+                description: description,
+                category: category,
+                date: date,
+                notes: notes,
+                updatedAt: serverTimestamp()
+            });
+            
+            // Reset form
+            const form = document.getElementById('expense-form');
+            form.reset();
+            document.getElementById('date-input').value = new Date().toISOString().split('T')[0];
+            delete form.dataset.editingId;
+            
+            const submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.textContent = '💾 Simpan Pengeluaran';
+            submitBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            submitBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+            
+            showStatus("✅ Pengeluaran diperbarui!", "success");
+            
+        } catch (error) {
+            console.error("❌ Error updating:", error);
+            showStatus("Gagal update: " + error.message, "error");
+        }
+    }
+
+    // ============================================
+    // CHART FUNCTIONS
+    // ============================================
+    function renderCharts(expenses) {
+        renderMonthlyChart(expenses);
+        renderUserChart(expenses);
+        renderCategoryChart(expenses);
+    }
+
+    function renderMonthlyChart(expenses) {
+        const monthlyData = {};
+        
+        expenses.forEach(exp => {
+            if (exp.date) {
+                const month = exp.date.substring(0, 7);
+                monthlyData[month] = (monthlyData[month] || 0) + (exp.amount || 0);
+            }
+        });
+        
+        const months = Object.keys(monthlyData).sort();
+        const labels = months.map(month => {
+            const [year, monthNum] = month.split('-');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+            return `${monthNames[parseInt(monthNum)-1]} ${year}`;
+        });
+        
+        const data = months.map(month => monthlyData[month]);
+        
+        const ctx = document.getElementById('monthly-chart').getContext('2d');
+        
+        if (chartInstances.monthly) {
+            chartInstances.monthly.destroy();
+        }
+        
+        chartInstances.monthly = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: chartLabels,
+                labels: labels,
                 datasets: [{
-                    label: 'Pengeluaran Bulanan (Rp)',
-                    data: chartData,
-                    backgroundColor: 'rgba(239, 68, 68, 0.7)', // Red
-                    borderColor: 'rgba(239, 68, 68, 1)',
-                    borderWidth: 1
+                    label: 'Total Pengeluaran Keluarga',
+                    data: data,
+                    backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 1,
+                    borderRadius: 8
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false, 
+                maintainAspectRatio: false,
                 scales: {
                     y: {
                         beginAtZero: true,
@@ -677,239 +1020,351 @@ function renderChartsAndSummary(data) {
                     }
                 },
                 plugins: {
-                    legend: {
-                        display: false
-                    },
-                    title: {
-                        display: true,
-                        text: 'Total Pengeluaran per Bulan (Bar Chart)'
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Rp ' + context.raw.toLocaleString('id-ID');
+                            }
+                        }
                     }
                 }
             }
         });
-    } else {
-        // Hide chart if no data
-        monthlyChartCanvas.style.display = 'none';
     }
-}
-window.renderChartsAndSummary = renderChartsAndSummary;
 
-
-// ------------------------------------
-// SECTION 5: CSV EXPORT FUNCTIONS
-// ------------------------------------
-
-// Utility function to create CSV rows from an array of columns
-const processRowToCsv = (row) => row.map(cell => {
-    if (typeof cell === 'string') {
-        // Escape double quotes and wrap in double quotes
-        return `"${cell.replace(/"/g, '""')}"`;
-    }
-    return cell;
-}).join(',');
-
-// Utility function to download CSV content
-function downloadCsv(csvContent, filename) {
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url); // Clean up the URL object
-}
-
-
-/**
- * 5A. Export Global Raw Data (all transactions)
- */
-function exportRawDataToCsv() {
-    if (allExpenseData.length === 0) {
-        console.log("Tidak ada data pengeluaran yang tercatat untuk diekspor.");
-        return;
-    }
-    
-    const headers = ["ID Transaksi", "Jumlah", "Deskripsi", "Kategori", "Tanggal", "Nama Pengguna", "Timestamp (ms)"];
-    
-    const rows = allExpenseData.map(item => [
-        item.id || '',
-        item.amount || 0,
-        item.description || '',
-        item.category || '',
-        item.date || '',
-        item.userName || '',
-        item.timestamp || '' // Include raw timestamp
-    ]);
-
-    const csvContent = [
-        processRowToCsv(headers),
-        ...rows.map(processRowToCsv)
-    ].join('\n');
-    
-    const currentDate = new Date().toISOString().split('T')[0];
-    downloadCsv(csvContent, `pengeluaran_mentah_semua_${currentDate}.csv`);
-    
-    console.log(`[EXPORT] Berhasil mengunduh Semua Data Mentah (${allExpenseData.length} baris) ke CSV.`);
-}
-window.exportRawDataToCsv = exportRawDataToCsv;
-
-
-/**
- * 5B. Export Global Monthly Recap (total summary)
- */
-function exportMonthlyRecapToCsv() {
-    if (allExpenseData.length === 0) {
-        console.log("Tidak ada data pengeluaran yang tercatat untuk membuat rekap.");
-        return;
-    }
-    
-    // Calculate Aggregated Data per Month
-    const monthlySummary = allExpenseData.reduce((acc, expense) => {
-        const expenseDate = expense.date;
-        if (typeof expenseDate === 'string' && expenseDate.length >= 7) {
-            const yearMonth = expenseDate.substring(0, 7); 
-            acc[yearMonth] = (acc[yearMonth] || 0) + expense.amount;
+    function renderUserChart(expenses) {
+        const userData = {};
+        
+        expenses.forEach(exp => {
+            const user = exp.userName || 'Anonim';
+            userData[user] = (userData[user] || 0) + (exp.amount || 0);
+        });
+        
+        const labels = Object.keys(userData);
+        const data = Object.values(userData);
+        
+        const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
+        
+        const ctx = document.getElementById('user-chart').getContext('2d');
+        
+        if (chartInstances.user) {
+            chartInstances.user.destroy();
         }
-        return acc;
-    }, {});
-
-    const sortedMonths = Object.keys(monthlySummary).sort().reverse();
-    
-    const headers = ["Bulan", "Total Pengeluaran (Rp)"];
-    
-    const rows = sortedMonths.map(ym => {
-        const amount = monthlySummary[ym];
-        const displayMonth = new Date(ym + '-01').toLocaleString('id-ID', { year: 'numeric', month: 'long' });
         
-        return [
-            displayMonth, 
-            amount 
-        ];
-    });
-
-    const csvContent = [
-        processRowToCsv(headers),
-        ...rows.map(processRowToCsv)
-    ].join('\n');
-    
-    const currentDate = new Date().toISOString().split('T')[0];
-    downloadCsv(csvContent, `rekap_bulanan_semua_${currentDate}.csv`);
-    
-    console.log(`[EXPORT] Berhasil mengunduh Rekap Bulanan (${sortedMonths.length} bulan) ke CSV.`);
-}
-window.exportMonthlyRecapToCsv = exportMonthlyRecapToCsv;
-
-
-/**
- * 5C. Export Specific Raw Data Per Month
- * @param {string} yearMonth - Format 'YYYY-MM' (e.g., '2025-11')
- * @param {string} displayMonth - Formatted month name (e.g., 'November 2025')
- */
-function exportSpecificMonthToCsv(yearMonth, displayMonth) {
-    
-    // 1. Filter data only for the requested month
-    const filteredData = allExpenseData.filter(item => 
-        item.date && item.date.startsWith(yearMonth)
-    );
-
-    if (filteredData.length === 0) {
-        console.log(`Tidak ada data transaksi yang tercatat untuk bulan ${displayMonth}.`);
-        return;
+        chartInstances.user = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.raw;
+                                const total = data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                return `${context.label}: Rp ${value.toLocaleString('id-ID')} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
-    // 2. Define CSV Headers (same as raw data)
-    const headers = ["ID Transaksi", "Jumlah", "Deskripsi", "Kategori", "Tanggal", "Nama Pengguna", "Timestamp (ms)"];
-    
-    // 3. Format Filtered Data Rows
-    const rows = filteredData.map(item => [
-        item.id || '',
-        item.amount || 0,
-        item.description || '',
-        item.category || '',
-        item.date || '',
-        item.userName || '',
-        item.timestamp || ''
-    ]);
-
-    // 4. Combine and Download
-    const csvContent = [
-        processRowToCsv(headers),
-        ...rows.map(processRowToCsv)
-    ].join('\n');
-    
-    const filename = `pengeluaran_${yearMonth}.csv`;
-    downloadCsv(csvContent, filename);
-    
-    console.log(`[EXPORT] Berhasil mengunduh Data Mentah untuk ${displayMonth} (${filteredData.length} baris) ke CSV.`);
-}
-window.exportSpecificMonthToCsv = exportSpecificMonthToCsv;
-
-
-// ------------------------------------
-// SECTION 6: PROMPT/CONFIRM REPLACEMENT FUNCTIONS (FOR CANVAS ENVIRONMENT)
-// ------------------------------------
-
-// Function 6A: UPDATE (Edit Expense) - Modified for console
-function handleEditClick(docId, oldAmount, oldCategory, oldDescription) {
-    console.log("--- EDIT TRANSACTION ---");
-    console.log(`Document ID: ${docId}`);
-    console.log(`Old Data: Jumlah: ${oldAmount}, Kategori: ${oldCategory}, Deskripsi: ${oldDescription}`);
-    console.log("Silakan panggil fungsi 'manualEdit' di konsol untuk memperbarui:");
-    console.log(`Contoh: manualEdit('${docId}', 50000, 'Transportasi', 'Bensin Baru')`);
-
-    // Manual helper function for debugging/testing
-    window.manualEdit = async (id, newAmount, newCategory, newDescription) => {
-        if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
+    function renderCategoryChart(expenses) {
+        const categoryData = {};
         
-        // Path document: /artifacts/{appId}/users/{currentUserId}/expenses/{docId}
-        const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
+        expenses.forEach(exp => {
+            const category = exp.category || 'Lainnya';
+            categoryData[category] = (categoryData[category] || 0) + (exp.amount || 0);
+        });
         
-        const updatePayload = {
-            amount: parseInt(newAmount), 
-            description: newDescription,
-            category: newCategory,
-            date: new Date().toISOString().split('T')[0], 
+        const labels = Object.keys(categoryData);
+        const data = Object.values(categoryData);
+        
+        const colors = {
+            'Makanan': '#fbbf24',
+            'Transportasi': '#60a5fa',
+            'Belanja': '#f472b6',
+            'Hiburan': '#34d399',
+            'Kesehatan': '#a78bfa',
+            'Pendidikan': '#fb923c',
+            'Tagihan': '#f87171',
+            'Lainnya': '#9ca3af'
         };
-
-        try {
-            await window.firebaseModular.updateDoc(docRef, updatePayload);
-            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil diperbarui.`);
-        } catch (error) {
-            console.error(`[DEBUG DATA] Gagal memperbarui dokumen ID ${id}: `, error);
-        }
-    };
-}
-window.handleEditClick = handleEditClick;
-
-
-// Function 6B: DELETE (Delete Expense) - Modified for console
-function handleDeleteClick(docId) {
-    console.log("--- DELETE TRANSACTION ---");
-    console.log(`Document ID: ${docId}`);
-    console.log("PERINGATAN: Penghapusan bersifat permanen.");
-    console.log("Silakan panggil fungsi 'manualDelete' di konsol untuk konfirmasi penghapusan:");
-    console.log(`Contoh: manualDelete('${docId}')`);
-
-    // Manual helper function for debugging/testing
-    window.manualDelete = async (id) => {
-        if (!currentUserId || !db) return console.error("Tidak ada pengguna yang terotentikasi atau koneksi database.");
         
-        // Path document: /artifacts/{appId}/users/{currentUserId}/expenses/{docId}
-        const docRef = window.firebaseModular.doc(db, `/artifacts/${appId}/users/${currentUserId}/expenses`, id);
+        const backgroundColors = labels.map(label => colors[label] || '#9ca3af');
         
-        try {
-            await window.firebaseModular.deleteDoc(docRef);
-            console.log(`[DEBUG DATA] Dokumen ID ${id} berhasil dihapus.`);
-        } catch (error) {
-            console.error(`[DEBUG DATA] Gagal menghapus dokumen ID ${id}: `, error);
+        const ctx = document.getElementById('category-chart').getContext('2d');
+        
+        if (chartInstances.category) {
+            chartInstances.category.destroy();
         }
+        
+        chartInstances.category = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: backgroundColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.raw;
+                                const total = data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                return `${context.label}: Rp ${value.toLocaleString('id-ID')} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ============================================
+    // MONTHLY RECAP
+    // ============================================
+    function renderMonthlyRecap(expenses) {
+        const monthlyData = {};
+        
+        expenses.forEach(exp => {
+            if (exp.date) {
+                const month = exp.date.substring(0, 7);
+                if (!monthlyData[month]) {
+                    monthlyData[month] = { total: 0, transactions: 0 };
+                }
+                monthlyData[month].total += (exp.amount || 0);
+                monthlyData[month].transactions++;
+            }
+        });
+        
+        const months = Object.keys(monthlyData).sort().reverse();
+        
+        const recapDiv = document.getElementById('monthly-recap');
+        
+        if (months.length === 0) {
+            recapDiv.innerHTML = '<p class="text-gray-500 text-center py-4">Belum ada data untuk rekap</p>';
+            return;
+        }
+        
+        let html = '';
+        months.forEach(month => {
+            const data = monthlyData[month];
+            const [year, monthNum] = month.split('-');
+            const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            const displayMonth = `${monthNames[parseInt(monthNum)-1]} ${year}`;
+            
+            html += `
+                <div class="monthly-row">
+                    <div>
+                        <div class="font-medium">${displayMonth}</div>
+                        <div class="text-sm text-gray-500">${data.transactions} transaksi</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold text-red-600">Rp ${data.total.toLocaleString('id-ID')}</div>
+                        <button onclick="exportMonthData('${month}')" class="text-sm text-blue-600 hover:text-blue-800 mt-1">
+                            Export
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        recapDiv.innerHTML = html;
+    }
+
+    // ============================================
+    // EXPORT FUNCTIONS
+    // ============================================
+    function exportAllData() {
+        if (allExpenses.length === 0) {
+            showStatus("Tidak ada data untuk diekspor", "error");
+            return;
+        }
+        
+        const headers = ['Tanggal', 'Jumlah', 'Kategori', 'Deskripsi', 'Catatan', 'Anggota'];
+        const rows = allExpenses.map(exp => [
+            exp.date || '',
+            exp.amount || 0,
+            exp.category || '',
+            exp.description || '',
+            exp.notes || '',
+            exp.userName || 'Anonim'
+        ]);
+        
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+        
+        downloadCSV(csvContent, `pengeluaran_keluarga_${new Date().toISOString().split('T')[0]}.csv`);
+        showStatus("✅ Data keluarga berhasil diekspor", "success");
+    }
+
+    function exportMonthlyData() {
+        if (allExpenses.length === 0) {
+            showStatus("Tidak ada data untuk diekspor", "error");
+            return;
+        }
+        
+        const monthlyData = {};
+        allExpenses.forEach(exp => {
+            if (exp.date) {
+                const month = exp.date.substring(0, 7);
+                monthlyData[month] = (monthlyData[month] || 0) + (exp.amount || 0);
+            }
+        });
+        
+        const headers = ['Bulan', 'Total Pengeluaran', 'Jumlah Transaksi'];
+        const rows = Object.entries(monthlyData)
+            .sort()
+            .map(([month, total]) => {
+                const [year, monthNum] = month.split('-');
+                const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                const displayMonth = `${monthNames[parseInt(monthNum)-1]} ${year}`;
+                const count = allExpenses.filter(exp => exp.date && exp.date.startsWith(month)).length;
+                
+                return [displayMonth, total, count];
+            });
+        
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+        
+        downloadCSV(csvContent, `rekap_bulanan_${new Date().toISOString().split('T')[0]}.csv`);
+        showStatus("✅ Rekap bulanan berhasil diekspor", "success");
+    }
+
+    function exportMyData() {
+        const myData = allExpenses.filter(exp => exp.userId === currentUserId);
+        
+        if (myData.length === 0) {
+            showStatus("Tidak ada data Anda untuk diekspor", "error");
+            return;
+        }
+        
+        const headers = ['Tanggal', 'Jumlah', 'Kategori', 'Deskripsi', 'Catatan'];
+        const rows = myData.map(exp => [
+            exp.date || '',
+            exp.amount || 0,
+            exp.category || '',
+            exp.description || '',
+            exp.notes || ''
+        ]);
+        
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+        
+        downloadCSV(csvContent, `pengeluaran_${currentUserName}_${new Date().toISOString().split('T')[0]}.csv`);
+        showStatus("✅ Data Anda berhasil diekspor", "success");
+    }
+
+    window.exportMonthData = function(month) {
+        const monthData = allExpenses.filter(exp => exp.date && exp.date.startsWith(month));
+        
+        if (monthData.length === 0) {
+            showStatus("Tidak ada data untuk bulan ini", "error");
+            return;
+        }
+        
+        const [year, monthNum] = month.split('-');
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const displayMonth = `${monthNames[parseInt(monthNum)-1]} ${year}`;
+        
+        const headers = ['Tanggal', 'Jumlah', 'Kategori', 'Deskripsi', 'Anggota'];
+        const rows = monthData.map(exp => [
+            exp.date || '',
+            exp.amount || 0,
+            exp.category || '',
+            exp.description || '',
+            exp.userName || 'Anonim'
+        ]);
+        
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+        
+        downloadCSV(csvContent, `pengeluaran_${month}.csv`);
+        showStatus(`✅ Data ${displayMonth} berhasil diekspor`, "success");
     };
-}
-window.handleDeleteClick = handleDeleteClick;
-</script>
+
+    function printReport() {
+        window.print();
+    }
+
+    function downloadCSV(content, filename) {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    // ============================================
+    // UTILITY FUNCTIONS
+    // ============================================
+    function showStatus(message, type = "info") {
+        const statusDiv = document.getElementById('status-alert');
+        statusDiv.textContent = message;
+        statusDiv.className = `p-4 mb-6 rounded-lg ${
+            type === 'error' ? 'bg-red-100 text-red-800' : 
+            type === 'success' ? 'bg-green-100 text-green-800' : 
+            'bg-blue-100 text-blue-800'
+        }`;
+        statusDiv.classList.remove('hidden');
+        
+        setTimeout(() => {
+            statusDiv.classList.add('hidden');
+        }, 5000);
+    }
+
+    function switchTab(tabName) {
+        // Update tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+        
+        // Update content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+    }
+
+    console.log("🚀 Aplikasi Pengeluaran Keluarga siap!");
+    </script>
 </body>
 </html>
